@@ -13,5 +13,4 @@ end
 
 module Stepkey = Make (Step)
 module Indexkey = Make (Int)
-module Stackkey = Make (Callstack)
 module Timekey = Make (Timestamp)
