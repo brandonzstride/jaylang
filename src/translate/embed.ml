@@ -21,8 +21,8 @@ module LetMonad (Names : Fresh_names.S) = struct
       match tape with
       | Bind (id, defn) ->
         ELet { var = id ; defn ; body }
-      | Ignore ignored ->
-        EIgnore { ignored ; body }
+      | Ignore defn ->
+        ELet { var = Reserved.catchall ; defn ; body }
   end
 
   include Let_builder (Binding)
@@ -60,7 +60,7 @@ module Embedded_type (W : sig val do_wrap : bool end) = struct
     }
 
   (*
-    Note: then gen body always gets frozen with the `EFreeze` constructor, so the caller
+    Note: then gen body always gets frozen with a `fun () -> ...`, so the caller
       does not need to do that.
 
     When we make a record with these labels, we might now ahead of time that we're only asking
@@ -71,13 +71,13 @@ module Embedded_type (W : sig val do_wrap : bool end) = struct
     let record_body =
       match ask_for with
       | `All ->
-        [ (Reserved.gen, Expr.EFreeze (force r.gen))
+        [ (Reserved.gen, freeze (force r.gen))
         ; (Reserved.check, (force r.check))
         ] @
         if W.do_wrap
         then [ (Reserved.wrap, (force r.wrap)) ]
         else []
-      | `Gen -> [ (Reserved.gen, Expr.EFreeze (force r.gen)) ]
+      | `Gen -> [ (Reserved.gen, freeze (force r.gen)) ]
       | `Check -> [ (Reserved.check, (force r.check)) ]
       | `Wrap -> assert W.do_wrap; [ (Reserved.wrap, (force r.wrap)) ]
     in
@@ -95,7 +95,7 @@ module Embedded_type (W : sig val do_wrap : bool end) = struct
     Thaws the gen from the given tau, where the record projection on "gen" might be partially evaluated.
   *)
   let gen (tau : Embedded.t) : Embedded.t =
-    EThaw (proj tau Reserved.gen)
+    thaw (proj tau Reserved.gen)
 
   (*
     Applies arg to tau's wrap, which is partially evaluated if possible.
@@ -225,7 +225,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             fresh_abstraction "e_unit_check" @@ fun e ->
             EMatch { subject = EVar e ; patterns = [ PUnit, EUnit ] }
           )
-        ; wrap = lazy EId 
+        ; wrap = lazy eid 
         }
     | ETypeInt ->
       make_embedded_type
@@ -234,7 +234,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             fresh_abstraction "e_int_check" @@ fun e ->
             EMatch { subject = EVar e ; patterns = [ PInt, EUnit ]}
           )
-        ; wrap = lazy EId
+        ; wrap = lazy eid
         }
     | ETypeBool ->
       make_embedded_type
@@ -243,7 +243,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             fresh_abstraction "e_bool_check" @@ fun e ->
             EMatch { subject = EVar e ; patterns = [ PBool, EUnit ]}
           )
-        ; wrap = lazy EId
+        ; wrap = lazy eid
         }
     | ETypeFun { domain = tau1 ; codomain = tau2 ; dep } ->
       make_embedded_type
@@ -370,7 +370,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                                                   ]
                            }
                   ) 
-                ; wrap = lazy EId
+                ; wrap = lazy eid
                 }
             )
         ; check = lazy (
@@ -382,7 +382,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             let%bind () = if do_wrap then ignore @@ proj e Reserved.wrap else return () in
             return EUnit
           ) 
-        ; wrap = lazy EId
+        ; wrap = lazy eid
         }
     | ETypeRefinement { tau ; predicate = e_p } ->
       make_embedded_type
@@ -486,11 +486,11 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       let res =
         match do_type_splay with
         | No -> (* standard translation, allowing arbitrary depth in recursive types *)
-          EThaw (apply Embedded_functions.y_freeze_thaw @@ 
+          thaw (apply Embedded_functions.y_freeze_thaw @@ 
                  fresh_abstraction "self_mu" @@ fun self ->
-                 EFreeze (
+                 freeze (
                      abstract_over_ids params @@
-                     let with_beta body = ELet { var = beta ; defn = EThaw (EVar self) ; body } in
+                     let with_beta body = ELet { var = beta ; defn = thaw (EVar self) ; body } in
                      make_embedded_type
                        { gen = lazy (with_beta (gen tau))
                        ; check = lazy (fresh_abstraction "e_mu_check" @@ fun e -> with_beta (check tau (EVar e)))
@@ -542,13 +542,13 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy (EVariant { label = Reserved.top ; payload = ERecord (RecordLabel.Map.singleton Reserved.nonce EPick_i) })  
         ; check = lazy (fresh_abstraction "e_top_check" @@ fun _ -> EUnit)
-        ; wrap = lazy EId
+        ; wrap = lazy eid
         }
     | ETypeBottom ->
       make_embedded_type
         { gen = lazy (EVanish ())
         ; check = lazy (fresh_abstraction "e_top_check" @@ fun _ -> EAbort "Nothing is in bottom")
-        ; wrap = lazy EId
+        ; wrap = lazy eid
         }
     | ETypeSingle ->
       let tau = Names.fresh_id ~suffix:"tau_single" () in
@@ -560,7 +560,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             let%bind _ = ignore @@ check (EVar tau) (gen (EVar t)) in
             return (check (EVar t) (gen (EVar tau)))
         )
-        ; wrap = lazy EId
+        ; wrap = lazy eid
         }
 
   and embed_let_defn ?(do_wrap : bool = do_wrap) ~(do_check : bool) ~(tau : Desugared.t) (defn : Desugared.t) : Embedded.t =

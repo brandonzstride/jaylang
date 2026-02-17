@@ -177,7 +177,7 @@ module Embedded_functions = struct
     let x = Ident "~x_y_freeze_thaw" in
     let body =
       abstract_over_ids [x] @@
-        EFreeze (EThaw (
+        freeze (thaw (
           apply (EVar f) (apply (EVar x) (EVar x))
         ))
     in

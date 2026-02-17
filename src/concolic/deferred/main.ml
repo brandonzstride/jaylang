@@ -27,7 +27,6 @@ let deferred_interp expr input_feeder ~max_step =
     | EInt i -> return @@ VInt (i, Smt.Formula.const_int i)
     | EBool b -> return @@ VBool (b, Smt.Formula.const_bool b)
     | EVar id -> fetch id
-    | EId -> return VId
     (* inputs *)
     | EPick_i -> get_input Interp_common.Key.Timekey.int_ input_feeder
     | EPick_b -> get_input Interp_common.Key.Timekey.bool_ input_feeder
@@ -72,7 +71,6 @@ let deferred_interp expr input_feeder ~max_step =
           end
         | v -> type_mismatch @@ Error_msg.project_non_record label v
       end
-    | EIntensionalEqual _ -> assert false
     (* control flow / branches *)
     | EMatch { subject ; patterns  } -> begin
         let%bind v = stern_eval subject in
@@ -117,28 +115,15 @@ let deferred_interp expr input_feeder ~max_step =
     | EFunction { param ; body } ->
       let%bind env = read_env in
       return (VFunClosure { param ; closure = { body ; env }})
-    | EFreeze body ->
-      let%bind env = read_env in
-      return (VFrozen { body ; env })
     | ELet { var ; defn ; body } ->
       let%bind v = eval defn in
       local (Env.add var v) (eval body)
-    | EIgnore { ignored ; body } ->
-      let%bind _ : Value.t = eval ignored in
-      eval body
     | EAppl { func ; arg } -> begin
         match%bind stern_eval func with
-        | VId -> eval arg
         | VFunClosure { param ; closure } ->
           let%bind v = eval arg in 
           local (fun _ -> Env.add param v closure.env) (k closure.body)
         | v -> type_mismatch @@ Error_msg.bad_appl v
-      end
-    | EThaw expr -> begin
-        match%bind stern_eval expr with
-        | VFrozen closure ->
-          local (fun _ -> closure.env) (k closure.body)
-        | v -> type_mismatch @@ Error_msg.thaw_non_frozen v
       end
     (* modules, records, and variants  *)
     | ERecord label_map ->

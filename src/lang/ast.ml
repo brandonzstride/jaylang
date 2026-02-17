@@ -237,11 +237,6 @@ module Expr = struct
     | EPick_i : 'a embedded_only t (* is parsed as "input", but we can immediately make it pick_i *)
     | EPick_b : 'a embedded_only t
     | ECase : { subject : 'a t ; cases : (int * 'a t) list ; default : 'a t } -> 'a embedded_only t (* simply sugar for nested conditionals *)
-    | EFreeze : 'a t -> 'a embedded_only t
-    | EThaw : 'a t -> 'a embedded_only t
-    | EId : 'a embedded_only t
-    | EIgnore : { ignored : 'a t ; body : 'a t } -> 'a embedded_only t (* simply sugar for `let _ = ignored in body` but is more efficient *)
-    | EIntensionalEqual : { left : 'a t ; right : 'a t } -> 'a embedded_only t
     | EUntouchable : 'a t -> 'a embedded_only t
     (* these exist in the desugared and embedded languages *)
     | EAbort : string -> 'a desugared_or_embedded t (* string is error message *)
@@ -377,7 +372,6 @@ module Expr = struct
           | EInput, EInput
           | EPick_i, EPick_i
           | EPick_b, EPick_b
-          | EId, EId
           | EType, EType
           | ETypeInt, ETypeInt
           | ETypeBool, ETypeBool
@@ -429,18 +423,10 @@ module Expr = struct
           | EVariant r1, EVariant r2 ->
             let- () = VariantLabel.compare r1.label r2.label in
             cmp r1.payload r2.payload
-          | EIntensionalEqual r1, EIntensionalEqual r2 ->
-            let- () = cmp r1.left r2.left in
-            cmp r1.right r2.right
           | ECase r1, ECase r2 ->
             let- () = cmp r1.subject r2.subject in
             let- () = List.compare (Tuple2.compare ~cmp1:Int.compare ~cmp2:cmp) r1.cases r2.cases in
             cmp r1.default r2.default
-          | EFreeze e1, EFreeze e2 -> cmp e1 e2
-          | EThaw a1, EThaw a2 -> cmp a1 a2
-          | EIgnore r1, EIgnore r2 ->
-            let- () = cmp r1.ignored r2.ignored in
-            cmp r1.body r2.body
           | EUntouchable e1, EUntouchable e2 -> cmp e1 e2
           | EAbort s1, EAbort s2 -> String.compare s1 s2
           | EDefer e1, EDefer e2 -> cmp e1 e2
@@ -664,11 +650,6 @@ module Expr = struct
     | EPick_i -> primary_atomic
     | EPick_b -> primary_atomic
     | ECase _ -> toplevel_expr (* simply sugar for nested conditionals *)
-    | EFreeze _ -> application_like
-    | EThaw _ -> application_like
-    | EId -> primary_atomic
-    | EIgnore _ -> toplevel_expr (* simply sugar for `let _ = ignored in body` but is more efficient *)
-    | EIntensionalEqual _ -> self_delimiting
     | EUntouchable _ -> application_like
     (* these exist in the desugared and embedded languages *)
     | EAbort _ -> application_like (* string is error message *)
@@ -790,15 +771,6 @@ module Expr = struct
         @@ (List.map ~f:(fun (num, case) -> Format.sprintf "%d -> %s" num (to_string case))) cases in
       let default_eval = Format.sprintf "\n| %s\n" (to_string default) in
       Format.sprintf "#case %s of %s%s" subject_eval cases_eval default_eval
-    | EFreeze e ->
-      Format.sprintf "#freeze %s" (ppp_ge e)
-    | EThaw e ->
-      Format.sprintf "#thaw %s" (ppp_ge e)
-    | EId -> "fun x -> x"
-    | EIgnore { ignored ; body } -> (* equivalent to `let _ = ignored in body` but is more efficient *)
-      Format.sprintf "#ignore %s in %s" (to_string ignored) (ppp_gt body)
-    | EIntensionalEqual { left; right } ->
-      Format.sprintf "#intensionalEqual (%s, %s)" (to_string left) (to_string right)
     | EUntouchable e ->
       Format.sprintf "#untouchable %s" (ppp_ge e)
     (* these exist in the desugared and embedded languages *)

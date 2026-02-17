@@ -163,10 +163,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     | EMultiArgFunction { params ; body } -> 
       using_env @@ fun env ->
       VMultiArgFunClosure { params ; closure = { body ; env = lazy env } }
-    | EFreeze body ->
-      using_env @@ fun env ->
-      VFrozen { body ; env = lazy env }
-    | EId -> return VId
     (* inputs *)
     | EInput | EPick_i -> 
       let%bind i = get_input Interp_common.Key.Indexkey.int_ (fun i -> Interp_common.Input.I i) feeder in
@@ -233,10 +229,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     | ETypeModule e_ls ->
       using_env @@ fun env ->
       VTypeModule (List.map e_ls ~f:(fun (label, tau) -> label, { body = tau ; env = lazy env } ))
-    | EThaw e ->
-      let%bind v_frozen = eval e in
-      let%orzero (VFrozen { body = e_frozen ; env = lazy env }) = v_frozen in
-      local (fun _ -> env) (eval e_frozen)
     | EGen e ->
       let%bind _ : a V.t = eval e in
       return VAbort
@@ -250,7 +242,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         match vfunc with
         | VFunClosure { param ; closure = { body ; env = lazy env } } ->
           local (fun _ -> Env.add param arg env) (eval body)
-        | VId -> return arg
         | VMultiArgFunClosure { params ; closure = { body ; env = lazy env }} -> begin
             match params with
             | [] -> type_mismatch ()
@@ -265,9 +256,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       end
     | ELet { var ; defn ; body } -> eval_let var ~defn ~body
     | ELetTyped { typed_var = { var ; _ } ; defn ; body ; _ } -> eval_let var ~defn ~body
-    | EIgnore { ignored ; body } ->
-      let%bind _ = eval ignored in
-      eval body
     | ETypeMu { var ; params ; body } ->
       let%bind env = read_env in
       let rec rec_env = lazy (
@@ -303,10 +291,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         | BOr, VBool b1, VBool b2                 -> return (VBool (b1 || b2))
         | _ -> type_mismatch ()
       end
-    | EIntensionalEqual { left ; right } ->
-      let%bind vleft = eval left in
-      let%bind vright = eval right in
-      return @@ VBool (V.equal vleft vright)
     | ENot e_not_body ->
       let%bind e_b = eval e_not_body in
       let%orzero (VBool b) = e_b in

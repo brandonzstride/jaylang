@@ -18,7 +18,6 @@ let of_concolic (v : Concolic.Deferred.Value.whnf) (m : Concolic.Deferred.Value.
       |> Concolic.Deferred.Value.cast_up
       |> subst
     (* Nothing to do *)
-    | VId -> VId
     | VUnit -> VUnit
     | VInt (i, _) -> VInt i
     | VBool (b, _) -> VBool b
@@ -29,6 +28,5 @@ let of_concolic (v : Concolic.Deferred.Value.whnf) (m : Concolic.Deferred.Value.
     | VUntouchable v -> VUntouchable (subst v)
     (* Expressions FIXME : subst into env *)
     | VFunClosure { param ; closure = { env = _ ; body } } -> VFunClosure { param ; closure = { env = Without_symbols.Env.empty ; body } }
-    | VFrozen { env = _ ; body } -> VFrozen { env = Without_symbols.Env.empty ; body }
   in
   subst (Concolic.Deferred.Value.cast_up v)

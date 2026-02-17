@@ -69,11 +69,17 @@ module Utils = struct
     )
 
   (*
+    Identity function expression.
+  *)
+  let eid : 'a Expr.t =
+    EFunction { param = Ident "." ; body = EVar (Ident ".") }
+
+  (*
     Is a partially-evaluating apply, where the function is checked against the identity function.
   *)
   let apply (type a) (func : a Expr.t) (arg : a Expr.t) : a Expr.t =
     match func with
-    | EId -> arg
+    | EFunction { param = Ident "." ; body = EVar (Ident ".") } -> arg
     | _ -> EAppl { func ; arg }
 
   (*
@@ -85,6 +91,12 @@ module Utils = struct
     | ERecord m when Map.mem m label ->
       Map.find_exn m label
     | _ -> EProject { record = tau ; label }
+
+  let freeze (type a) (expr : a Expr.t) : a Expr.t =
+    EFunction { param = Reserved.catchall ; body = expr }
+
+  let thaw (type a) (expr : a Expr.t) : a Expr.t =
+    apply expr EUnit
 
   (*
     -------------------------------------

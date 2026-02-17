@@ -265,21 +265,6 @@ let rand_ECase : 'a expr_gen = fun ~ctx ->
           default = pick_expr ~ctx;
         }
 
-let rand_EFreeze : 'a expr_gen = fun ~ctx ->
-  EFreeze(pick_expr ~ctx)
-
-let rand_EThaw : 'a expr_gen = fun ~ctx ->
-  EThaw(pick_expr ~ctx)
-
-let rand_EId : 'a expr_gen = fun ~ctx ->
-  ignore ctx; EId
-
-let rand_EIgnore : 'a expr_gen = fun ~ctx ->
-  EIgnore { ignored = pick_expr ~ctx; body = pick_expr ~ctx }
-
-let rand_EIntensionalEqual : 'a expr_gen = fun ~ctx ->
-  EIntensionalEqual { left = pick_expr ~ctx; right = pick_expr ~ctx }
-
 let rand_EUntouchable : 'a expr_gen = fun ~ctx ->
   EUntouchable(pick_expr ~ctx)
 
@@ -574,7 +559,6 @@ let embedded_generator_parts : embedded generator_parts = {
     rand_EVar;
     rand_EPick_i;
     rand_EPick_b;
-    rand_EId;
     rand_EAbort;
     rand_EVanish;
   ];
@@ -592,11 +576,6 @@ let embedded_generator_parts : embedded generator_parts = {
     rand_EVariant;
     rand_EDefer;
     rand_ECase;
-    rand_EFreeze;
-    rand_EThaw;
-    rand_EId;
-    rand_EIgnore;
-    rand_EIntensionalEqual;
     rand_EUntouchable;
   ];
   leaf_statement_generators = [];

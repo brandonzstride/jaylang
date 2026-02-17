@@ -109,16 +109,10 @@ the language and which lines are erased.
 %token NO_WRAP
 (*! endscope !*)
 (*! scope embedded !*)
-%token COMMA
 %token PICK_I
 %token PICK_B
 %token CASE
 %token DEFAULT
-%token FREEZE
-%token THAW
-%token ID
-%token IGNORE
-%token INTENSIONAL_EQUAL
 %token UNTOUCHABLE
 (*! endscope !*)
 
@@ -256,10 +250,6 @@ expr:
       { ELet { var = $2 ; defn = $4 ; body = $6 } : t }
   | LET_BIND l_ident EQUALS expr IN expr %prec prec_let (* this is desugared in place, which is a little ugly... *)
       { EAppl { func = EAppl { func = EVar (Ident "bind") ; arg = $4 } ; arg = EFunction { param = $2 ; body = $6 }} : t } 
-  (*! scope embedded !*)
-  | IGNORE expr IN expr %prec prec_let
-      { EIgnore { ignored = $2; body = $4 } }
-  (*! endscope !*)
   // Functions
   (*! scope bluejay !*)
   | letfun_rec IN expr %prec prec_fun
@@ -273,8 +263,6 @@ expr:
   (*! scope embedded !*)
   | CASE expr WITH PIPE? case_expr_list DEFAULT expr END
       { ECase { subject = $2; cases = $5; default = $7 } }
-  | INTENSIONAL_EQUAL OPEN_PAREN expr COMMA expr CLOSE_PAREN
-      { EIntensionalEqual { left = $3; right = $5 } }
   (*! endscope !*)
 ;
 
@@ -404,10 +392,6 @@ appl_expr:
       { EGen $2 : t }
   (*! endscope !*)
   (*! scope embedded !*)
-  | FREEZE primary_expr
-      { EFreeze $2 : t }
-  | THAW primary_expr
-      { EThaw $2 : t }
   | UNTOUCHABLE primary_expr
       { EUntouchable $2 : t }
   (*! endscope !*)
@@ -434,8 +418,6 @@ primary_expr:
       { EPick_i : t }
   | PICK_B
       { EPick_b : t }
-  | ID
-      { EId : t }
   (*! endscope !*)
   (*! scope bluejay desugared !*)
   | TYPE

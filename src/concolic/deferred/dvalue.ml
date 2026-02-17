@@ -27,8 +27,6 @@ module Make (V : Utils.Equatable.P1) = struct
     | VVariant : { label : VariantLabel.t ; payload : t } -> 'a ok v
     | VRecord : t RecordLabel.Map.t -> 'a ok v
     | VModule : t RecordLabel.Map.t -> 'a ok v
-    | VId : 'a ok v
-    | VFrozen : closure -> 'a ok v
     | VUntouchable : t -> 'a ok v
     | VSymbol : Interp_common.Timestamp.t -> 'a symbol v
 
@@ -57,8 +55,6 @@ module Make (V : Utils.Equatable.P1) = struct
       | VVariant _
       | VRecord _
       | VModule _
-      | VId
-      | VFrozen _ 
       | VUntouchable _
       | VSymbol _) as x -> x
 
@@ -71,8 +67,6 @@ module Make (V : Utils.Equatable.P1) = struct
       | VVariant _
       | VRecord _
       | VModule _
-      | VId
-      | VFrozen _ 
       | VUntouchable _) as x -> whnf x
     | VSymbol _ as x -> symb x
 
@@ -118,8 +112,6 @@ module Make (V : Utils.Equatable.P1) = struct
     | VModule module_body -> 
       Format.sprintf "struct %s end" 
       (String.concat ~sep:" " @@ List.map (Map.to_alist module_body) ~f:(fun (key, data) -> Format.sprintf "let %s = %s" (RecordLabel.to_string key) (to_string data)))
-    | VId -> "(fun x -> x)"
-    | VFrozen _ -> "(Freeze <expr>)"
     | VUntouchable v -> Format.sprintf "Untouchable (%s)" (to_string v)
     | VSymbol t -> Format.sprintf "T%s" (Interp_common.Timestamp.to_string t)
 

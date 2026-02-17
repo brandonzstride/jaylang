@@ -124,16 +124,10 @@ rule token = parse
 | "#gen"               { GEN }
 (*! endscope !*)
 (*! scope embedded !*)
-| ","                  { COMMA }
 | "#pick_i"            { PICK_I }
 | "#pick_b"            { PICK_B }
 | "#case"              { CASE }
 | "#default"           { DEFAULT }
-| "#freeze"            { FREEZE }
-| "#thaw"              { THAW }
-| "#id"                { ID }
-| "#ignore"            { IGNORE }
-| "#intensionalEqual"  { INTENSIONAL_EQUAL }
 | "#untouchable"       { UNTOUCHABLE }
 (*! endscope !*)
 | digit+ as n          { INT (int_of_string n) }

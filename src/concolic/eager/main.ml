@@ -33,10 +33,6 @@ let eager_eval
     | EFunction { param ; body } ->
       let%bind env = read_env in
       return @@ VFunClosure { param ; closure = { body ; env } }
-    | EId -> return VId
-    | EFreeze e_freeze_body -> 
-      let%bind env = read_env in
-      return @@ VFrozen { body = e_freeze_body ; env }
     | EVariant { label ; payload = e_payload } -> 
       let%bind payload = eval e_payload in
       return @@ VVariant { label ; payload }
@@ -51,11 +47,6 @@ let eager_eval
             | None -> type_mismatch @@ Error_msg.project_missing_label label v
           end
         | v -> type_mismatch @@ Error_msg.project_non_record label v
-      end
-    | EThaw e_frozen -> begin
-        match%bind eval e_frozen with
-        | VFrozen { body ; env } -> local (fun _ -> env) (eval body)
-        | v -> type_mismatch @@ Error_msg.thaw_non_frozen v
       end
     | ERecord record_body ->
       let%bind value_record_body =
@@ -80,9 +71,6 @@ let eager_eval
         fold_stmts (return RecordLabel.Map.empty) stmt_ls
       in
       return @@ VModule module_body 
-    | EIgnore { ignored ; body } ->
-      let%bind _ : Value.t = eval ignored in
-      eval body
     | EMatch { subject ; patterns } -> begin (* Note: there cannot be symbolic branching on match *)
         let%bind v = eval subject in
         match
@@ -104,7 +92,6 @@ let eager_eval
     | EAppl { func ; arg } -> begin
         let%bind vfunc = eval func in
         match vfunc with
-        | VId -> eval arg
         | VFunClosure { param ; closure } ->
           let%bind varg = eval arg in
           local (fun _ -> Env.add param varg closure.env) (eval closure.body)
@@ -142,7 +129,6 @@ let eager_eval
         | VBool (b, e_b) -> return @@ VBool (not b, Smt.Formula.not_ e_b) 
         | v -> type_mismatch @@ Error_msg.bad_not v
       end
-    | EIntensionalEqual _ -> assert false
     (* Branching *)
     | EIf { cond ; true_body ; false_body } -> begin
         match%bind eval cond with

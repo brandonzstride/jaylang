@@ -72,8 +72,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
       | VVanish : 'a t (* this results from `EVanish` or `EAssume e` where e => false *)
       | VUnboundVariable : Ident.t -> 'a t
       (* embedded only *)
-      | VId : 'a embedded_only t
-      | VFrozen : 'a closure -> 'a embedded_only t
       | VUntouchable : 'a t -> 'a embedded_only t
       (* bluejay or type erased *)
       | VList : 'a t list -> 'a bluejay_or_type_erased t
@@ -150,7 +148,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
           && equal r1.payload r2.payload
         | VRecord m1, VRecord m2 -> RecordLabel.Map.equal equal m1 m2
         | VModule m1, VModule m2 -> RecordLabel.Map.equal equal m1 m2
-        | VFrozen c1, VFrozen c2 -> equal_closure [] c1 c2
         | VUntouchable v1, VUntouchable v2 -> equal v1 v2
         | VList l1, VList l2 -> List.equal equal l1 l2
         | VMultiArgFunClosure r1, VMultiArgFunClosure r2 -> begin
@@ -197,7 +194,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
         | VTypeMismatch, VTypeMismatch
         | VAbort, VAbort
         | VVanish, VVanish
-        | VId, VId 
         | VType, VType
         | VTypeInt, VTypeInt
         | VTypeBool, VTypeBool
@@ -248,8 +244,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
     | VUnboundVariable Ident v -> Format.sprintf "Unbound_variable %s" v
     | VAbort -> "Abort"
     | VVanish -> "Vanish"
-    | VId -> "(fun x -> x)"
-    | VFrozen e -> Format.sprintf "(Freeze %s)" (_closure_to_string e)
     | VUntouchable v -> Format.sprintf "Untouchable (%s)" (_to_string v)
     | VList ls -> Format.sprintf "[ %s ]" (String.concat ~sep:" ; " @@ List.map ~f:_to_string ls)
     | VMultiArgFunClosure { params ; closure } -> Format.sprintf "(fun %s -> %s)" (String.concat ~sep:" ; " @@ List.map ~f:(fun (Ident s) -> s) params) (_closure_to_string closure)
