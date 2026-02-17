@@ -10,5 +10,4 @@
  (synopsis "Deferred interpreter on type-embedded programs")
  (inline_tests)
  (instrumentation (backend landmarks --auto))
- (instrumentation (backend bisect_ppx))
 )

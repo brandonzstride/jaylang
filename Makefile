@@ -42,27 +42,26 @@ logclean:
 # testing
 
 # run the fast concolic tests (the ill-typed programs)
-# Follow up with `bisect-ppx-report html` and open the coverage report to view code coverage
 test-fast:
-	dune exec --instrument-with bisect_ppx -- src-test/concolic/test_concolic.exe -q
+	dune exec -- src-test/concolic/test_concolic.exe -q
 
 # run the slow concolic tests (all programs, where well-typed run a long time)
 test-all:
-	dune exec --instrument-with bisect_ppx -- src-test/concolic/test_concolic.exe
+	dune exec -- src-test/concolic/test_concolic.exe
 
 # run the interpreter on all test files
 test-interp:
-	dune exec --instrument-with bisect_ppx -- src-test/interp/test_interp.exe
+	dune exec -- src-test/interp/test_interp.exe
 
 # run the deferred interpreter on dedicated deferred tests (both fast and slow)
 test-deferred:
-	dune exec --instrument-with bisect_ppx -- src-test/deferred/test_deferred.exe
+	dune exec -- src-test/deferred/test_deferred.exe
 
 test-cdeval:
-	dune exec --instrument-with bisect_ppx -- src-test/deferred-concolic/test_deferred_concolic.exe -q
+	dune exec -- src-test/deferred-concolic/test_deferred_concolic.exe -q
 
 test-cdeval-all:
-	dune exec --instrument-with bisect_ppx -- src-test/deferred-concolic/test_deferred_concolic.exe
+	dune exec -- src-test/deferred-concolic/test_deferred_concolic.exe
 
 test-tools:
 	dune exec -- src-test/tools/test_tools.exe
