@@ -277,18 +277,6 @@ let rand_EId : 'a expr_gen = fun ~ctx ->
 let rand_EIgnore : 'a expr_gen = fun ~ctx ->
   EIgnore { ignored = pick_expr ~ctx; body = pick_expr ~ctx }
 
-let rand_ETable : 'a expr_gen = fun ~ctx ->
-  ignore ctx; ETableCreate
-
-let rand_ETblAppl : 'a expr_gen = fun ~ctx ->
-  ETableAppl { tbl = pick_expr ~ctx; gen = pick_expr ~ctx; arg = pick_expr ~ctx }
-
-let rand_EDet : 'a expr_gen = fun ~ctx ->
-  EDet(pick_expr ~ctx)
-
-let rand_EEscapeDet : 'a expr_gen = fun ~ctx ->
-  EEscapeDet(pick_expr ~ctx)
-
 let rand_EIntensionalEqual : 'a expr_gen = fun ~ctx ->
   EIntensionalEqual { left = pick_expr ~ctx; right = pick_expr ~ctx }
 
@@ -341,7 +329,6 @@ let rand_ETypeFun : 'a expr_gen = fun ~ctx ->
     domain = pick_expr ~ctx;
     codomain = pick_expr ~ctx;
     dep = if pick_bool ~ctx then `No else `Binding (pick_ident ~ctx ());
-    det = pick_bool ~ctx;
   }
 
 let rand_ETypeRefinement : 'a expr_gen = fun ~ctx ->
@@ -588,7 +575,6 @@ let embedded_generator_parts : embedded generator_parts = {
     rand_EPick_i;
     rand_EPick_b;
     rand_EId;
-    rand_ETable;
     rand_EAbort;
     rand_EVanish;
   ];
@@ -610,10 +596,6 @@ let embedded_generator_parts : embedded generator_parts = {
     rand_EThaw;
     rand_EId;
     rand_EIgnore;
-    rand_ETable;
-    rand_ETblAppl;
-    rand_EDet;
-    rand_EEscapeDet;
     rand_EIntensionalEqual;
     rand_EUntouchable;
   ];

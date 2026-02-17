@@ -54,8 +54,6 @@ end
 
 module Err = struct
   include Status.Eval
-  let fail_on_nondeterminism_misuse (s : State.t) : t * State.t =
-    Status.Found_abort (State.inputs s, "Nondeterminism used when not allowed."), s
   let fail_on_fetch (id : Lang.Ast.Ident.t) (s : State.t) : t * State.t =
     Status.Unbound_variable (State.inputs s, id), s
   let fail_on_max_step (_step : int) (s : State.t) : t * State.t =
@@ -205,7 +203,6 @@ let[@inline always] defer (body : Lang.Ast.Embedded.t) : Value.t m =
   }
 
 let get_input (type a) (make_key : Timestamp.t -> a Key.Timekey.t) (feeder : Timestamp.t Input_feeder.t) : Value.t m =
-  let%bind () = assert_nondeterminism in
   let%bind state = get in
   let key = make_key state.time in
   let v = feeder.get key in

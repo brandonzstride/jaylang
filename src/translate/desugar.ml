@@ -93,8 +93,8 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
       EVariant { label ; payload = desugar payload }
     | ERecord m ->
       ERecord (Map.map m ~f:desugar)
-    | ETypeFun { domain ; codomain ; det ; dep } ->
-      ETypeFun { domain = desugar domain ; codomain = desugar codomain ; det ; dep }
+    | ETypeFun { domain ; codomain ; dep } ->
+      ETypeFun { domain = desugar domain ; codomain = desugar codomain ;  dep }
     | ETypeRecord m ->
       ETypeRecord (Map.map m ~f:desugar)
     | ETypeModule m ->
@@ -179,7 +179,6 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
                                                  , tau'
                             }
         ; dep = `Binding x
-        ; det = false
         }
     (* Abstract type *)
     | EAbstractType -> EGen EType

@@ -29,7 +29,6 @@ module Make (V : Utils.Equatable.P1) = struct
     | VModule : t RecordLabel.Map.t -> 'a ok v
     | VId : 'a ok v
     | VFrozen : closure -> 'a ok v
-    | VTable : { mutable alist : (t * t) list } -> 'a ok v (* TODO: should the table entries be fully evaluated to more than whnf? *)
     | VUntouchable : t -> 'a ok v
     | VSymbol : Interp_common.Timestamp.t -> 'a symbol v
 
@@ -60,7 +59,6 @@ module Make (V : Utils.Equatable.P1) = struct
       | VModule _
       | VId
       | VFrozen _ 
-      | VTable _
       | VUntouchable _
       | VSymbol _) as x -> x
 
@@ -75,7 +73,6 @@ module Make (V : Utils.Equatable.P1) = struct
       | VModule _
       | VId
       | VFrozen _ 
-      | VTable _
       | VUntouchable _) as x -> whnf x
     | VSymbol _ as x -> symb x
 
@@ -123,9 +120,6 @@ module Make (V : Utils.Equatable.P1) = struct
       (String.concat ~sep:" " @@ List.map (Map.to_alist module_body) ~f:(fun (key, data) -> Format.sprintf "let %s = %s" (RecordLabel.to_string key) (to_string data)))
     | VId -> "(fun x -> x)"
     | VFrozen _ -> "(Freeze <expr>)"
-    | VTable { alist } -> 
-      Format.sprintf "Table (%s)\n"
-        (String.concat ~sep:" ; " @@ List.map ~f:(fun (k, v) -> Format.sprintf "(%s, %s)" (to_string k) (to_string v)) alist)
     | VUntouchable v -> Format.sprintf "Untouchable (%s)" (to_string v)
     | VSymbol t -> Format.sprintf "T%s" (Interp_common.Timestamp.to_string t)
 

@@ -23,9 +23,6 @@ let eager_eval
     let open Value.M in (* puts the value constructors in scope *)
     let%bind () = incr_step ~max_step in
     match expr with
-    (* Determinism *)
-    | EDet e -> with_incr_depth @@ eval e
-    | EEscapeDet e -> with_escaped_det @@ eval e
     (* Ints and bools -- constant expressions *)
     | EInt i -> return @@ VInt (i, Smt.Formula.const_int i)
     | EBool b -> return @@ VBool (b, Smt.Formula.const_bool b)
@@ -138,7 +135,6 @@ let eager_eval
         | BGeq         , VInt (n1, e1)  , VInt (n2, e2)              -> k (v_bool (n1 >= n2)) e1 e2 Greater_than_eq
         | BOr          , VBool (b1, e1) , VBool (b2, e2)             -> k (v_bool (b1 || b2)) e1 e2 Or
         | BAnd         , VBool (b1, e1) , VBool (b2, e2)             -> return @@ VBool (b1 && b2, Smt.Formula.and_ [ e1 ; e2 ])
-        | BEqual       , VUntouchable r1, VUntouchable r2 -> return (VBool (Value.intensional_equal r1 r2))
         | _ -> type_mismatch @@ Error_msg.bad_binop vleft binop vright
       end
     | ENot e_not_body -> begin
@@ -146,10 +142,7 @@ let eager_eval
         | VBool (b, e_b) -> return @@ VBool (not b, Smt.Formula.not_ e_b) 
         | v -> type_mismatch @@ Error_msg.bad_not v
       end
-    | EIntensionalEqual { left ; right } ->
-      let%bind vleft = eval left in
-      let%bind vright = eval right in
-      return @@ VBool (Value.intensional_equal vleft vright)
+    | EIntensionalEqual _ -> assert false
     (* Branching *)
     | EIf { cond ; true_body ; false_body } -> begin
         match%bind eval cond with
@@ -178,33 +171,6 @@ let eager_eval
     (* Inputs *)
     | EPick_i -> get_input Interp_common.Key.Stepkey.int_ input_feeder
     | EPick_b -> get_input Interp_common.Key.Stepkey.bool_ input_feeder
-    (* Tables -- includes some branching *)
-    | ETableCreate -> return (VTable { alist = [] })
-    | ETableAppl { tbl ; gen ; arg } -> begin
-        match%bind eval tbl with
-        | VTable mut_r -> begin
-            let%bind v = eval arg in
-            let%bind output_opt =
-              List.fold mut_r.alist ~init:(return None) ~f:(fun acc_m (input, output) ->
-                  match%bind acc_m with
-                  | None -> 
-                    let (b, e) = Value.intensional_equal input v in
-                    let%bind () = push_branch (Direction.Bool_direction (b, e)) in
-                    if b
-                    then return (Some output)
-                    else return None
-                  | Some _ -> acc_m (* already found an output, so go unchanged *)
-                )
-            in
-            match output_opt with
-            | Some output -> return output
-            | None ->
-              let%bind new_output = with_escaped_det @@ eval gen in
-              mut_r.alist <- (v, new_output) :: mut_r.alist;
-              return new_output
-          end
-        | tb -> type_mismatch @@ Error_msg.appl_non_table tb
-      end
     (* Failure cases *)
     | EAbort msg -> abort msg
     | EVanish () -> vanish

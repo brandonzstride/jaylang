@@ -63,9 +63,6 @@ module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
     (* Not putting state in the error because it's returned anyways *)
     type t = unit Interp_common.Errors.Runtime.t
 
-    let fail_on_nondeterminism_misuse (s : State.t) : t * State.t =
-      `XAbort { msg = "Nondeterminism used when not allowed." ; body = () }, s
-
     let fail_on_fetch (id : Ident.t) (s : State.t) : t * State.t =
       `XUnbound_variable (id, ()), s
 
@@ -123,7 +120,6 @@ module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
     return a
 
   let get_input (type a) (fkey : int -> a Interp_common.Key.Indexkey.t) (pack : a -> Interp_common.Input.t) (feeder : int Feeder.t) : a m =
-    let%bind () = assert_nondeterminism in
     let%bind n = n_inputs in
     let a = feeder.get (fkey n) in
     let%bind () = log_input (pack a) in
@@ -143,9 +139,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
   let rec eval (e : a Expr.t) : a V.t m =
     let%bind () = incr_step ~max_step in
     match e with
-    (* Determinism *)
-    | EDet e -> with_incr_depth @@ eval e
-    | EEscapeDet e -> with_escaped_det @@ eval e
     (* direct values *)
     | EUnit -> return VUnit
     | EInt i -> return (VInt i)
@@ -201,15 +194,15 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       return (VList ls)
     | ETypeList -> return VTypeListFun
     | ETypeSingle -> return VTypeSingleFun
-    | ETypeFun { domain ; codomain ; dep ; det } -> begin
+    | ETypeFun { domain ; codomain ; dep } -> begin
         let%bind domain = eval domain in
         match dep with
         | `Binding binding ->
           using_env @@ fun env ->
-          VTypeDepFun { binding ; domain ; codomain = { body = codomain ; env = lazy env } ; det }
+          VTypeDepFun { binding ; domain ; codomain = { body = codomain ; env = lazy env } }
         | `No ->
           let%bind codomain = eval codomain in
-          return (VTypeFun { domain ; codomain ; det })
+          return (VTypeFun { domain ; codomain })
       end
     | ETypeRefinement { tau ; predicate } ->
       let%bind tau = eval tau in
@@ -392,29 +385,6 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
             ) (eval body')
         | _ -> raise @@ InvariantFailure "Logically impossible abstraction from funsig without parameters"
       end
-    (* tables *)
-    | ETableCreate -> return (VTable { alist = [] })
-    | ETableAppl { tbl ; gen ; arg } -> begin
-        match%bind eval tbl with
-        | VTable mut_r -> begin
-            let%bind v = eval arg in
-            let%bind output_opt = 
-              List.fold mut_r.alist ~init:(return None) ~f:(fun acc_m (input, output) ->
-                  match%bind acc_m with
-                  | None when V.equal input v -> return (Some output)
-                  | _ -> acc_m (* already found an output or doesn't match input, so go unchanged *)
-                )
-            in
-            match output_opt with
-            | Some output -> return output
-            | None ->
-              let%bind new_output = with_escaped_det @@ eval gen in
-              mut_r.alist <- (v, new_output) :: mut_r.alist;
-              return new_output
-          end
-        | _ -> type_mismatch ()
-      end
-
 
   and eval_let (var : Ident.t) ~(defn : a Expr.t) ~(body : a Expr.t) : a V.t m =
     let%bind v = eval defn in

@@ -56,7 +56,6 @@ let deferred_interp expr input_feeder ~max_step =
         | BGeq         , VInt (n1, e1)  , VInt (n2, e2)              -> k (v_bool (n1 >= n2)) e1 e2 Greater_than_eq
         | BOr          , VBool (b1, e1) , VBool (b2, e2)             -> k (v_bool (b1 || b2)) e1 e2 Or
         | BAnd         , VBool (b1, e1) , VBool (b2, e2)             -> return @@ VBool (b1 && b2, Smt.Formula.and_ [ e1 ; e2 ])
-        | BEqual       , VUntouchable r1, VUntouchable r2 -> return (VBool (Value.intensional_equal r1 r2))
         | _ -> type_mismatch @@ Error_msg.bad_binop vleft binop vright
       end
     | ENot expr -> begin
@@ -73,10 +72,7 @@ let deferred_interp expr input_feeder ~max_step =
           end
         | v -> type_mismatch @@ Error_msg.project_non_record label v
       end
-    | EIntensionalEqual { left ; right } ->
-      let%bind vleft = eval left in
-      let%bind vright = eval right in
-      return @@ VBool (Value.intensional_equal vleft vright)
+    | EIntensionalEqual _ -> assert false
     (* control flow / branches *)
     | EMatch { subject ; patterns  } -> begin
         let%bind v = stern_eval subject in
@@ -179,36 +175,6 @@ let deferred_interp expr input_feeder ~max_step =
     (* termination *)
     | EVanish () -> vanish
     | EAbort msg -> abort msg
-    (* determinism stuff *)
-    | EDet expr -> with_incr_depth (k expr)
-    | EEscapeDet expr -> with_escaped_det (k expr)
-    (* tables *)
-    | ETableCreate -> return (VTable { alist = [] })
-    | ETableAppl { tbl ; gen ; arg } -> begin
-      match%bind stern_eval tbl with
-      | VTable mut_r -> begin
-        let%bind v = stern_eval arg in
-        let%bind output_opt =
-          List.fold mut_r.alist ~init:(return None) ~f:(fun acc_m (input, output) ->
-            match%bind acc_m with
-            | None ->
-              let (b, e) = Value.intensional_equal input (cast_up v) in
-              let%bind () = push_branch (Direction.Bool_direction (b, e)) in
-              if b
-              then return (Some output)
-              else return None
-            | Some _ -> acc_m (* already found an output, so go unchanged *)
-          )
-        in
-        match output_opt with
-        | Some output -> return output
-        | None ->
-          let%bind new_output = with_escaped_det @@ k gen in
-          mut_r.alist <- (cast_up v, new_output) :: mut_r.alist;
-          return new_output
-      end
-      | tb -> type_mismatch @@ Error_msg.appl_non_table tb
-    end
 
   (*
     This stern eval may error monadically so that we get propagation of

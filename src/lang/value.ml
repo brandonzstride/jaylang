@@ -74,7 +74,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
       (* embedded only *)
       | VId : 'a embedded_only t
       | VFrozen : 'a closure -> 'a embedded_only t
-      | VTable : { mutable alist : ('a t * 'a t) list } -> 'a embedded_only t
       | VUntouchable : 'a t -> 'a embedded_only t
       (* bluejay or type erased *)
       | VList : 'a t list -> 'a bluejay_or_type_erased t
@@ -88,8 +87,8 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
       | VTypeUnit : 'a bluejay_or_desugared t
       | VTypeRecord : 'a t RecordLabel.Map.t -> 'a bluejay_or_desugared t
       | VTypeModule : (RecordLabel.t * 'a closure) list -> 'a bluejay_or_desugared t
-      | VTypeFun : { domain : 'a t ; codomain : 'a t ; det : bool } -> 'a bluejay_or_desugared t
-      | VTypeDepFun : { binding : Ident.t ; domain : 'a t ; codomain : 'a closure ; det : bool } -> 'a bluejay_or_desugared t
+      | VTypeFun : { domain : 'a t ; codomain : 'a t } -> 'a bluejay_or_desugared t
+      | VTypeDepFun : { binding : Ident.t ; domain : 'a t ; codomain : 'a closure } -> 'a bluejay_or_desugared t
       | VTypeRefinement : { tau : 'a t ; predicate : 'a t } -> 'a bluejay_or_desugared t
       | VTypeMu : { var : Ident.t ; params : Ident.t list ; closure : 'a closure } -> 'a bluejay_or_desugared t
       | VTypeVariant : (VariantTypeLabel.t * 'a t) list -> 'a bluejay_or_desugared t
@@ -152,8 +151,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
         | VRecord m1, VRecord m2 -> RecordLabel.Map.equal equal m1 m2
         | VModule m1, VModule m2 -> RecordLabel.Map.equal equal m1 m2
         | VFrozen c1, VFrozen c2 -> equal_closure [] c1 c2
-        | VTable r1, VTable r2 ->
-          List.equal (Tuple2.equal ~eq1:equal ~eq2:equal) r1.alist r2.alist
         | VUntouchable v1, VUntouchable v2 -> equal v1 v2
         | VList l1, VList l2 -> List.equal equal l1 l2
         | VMultiArgFunClosure r1, VMultiArgFunClosure r2 -> begin
@@ -176,12 +173,10 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
             | Unequal_lengths -> false
           end
         | VTypeFun r1, VTypeFun r2 ->
-          Bool.(=) r1.det r2.det
-          && equal r1.domain r2.domain
+          equal r1.domain r2.domain
           && equal r1.codomain r2.codomain
         | VTypeDepFun r1, VTypeDepFun r2 ->
-          Bool.(=) r1.det r2.det
-          && equal r1.domain r2.domain
+          equal r1.domain r2.domain
           && equal_closure [ r1.binding, r2.binding ] r1.codomain r2.codomain
         | VTypeRefinement r1, VTypeRefinement r2 ->
           equal r1.tau r2.tau && equal r1.predicate r2.predicate
@@ -255,9 +250,6 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
     | VVanish -> "Vanish"
     | VId -> "(fun x -> x)"
     | VFrozen e -> Format.sprintf "(Freeze %s)" (_closure_to_string e)
-    | VTable { alist } -> 
-      Format.sprintf "Table (%s)\n"
-        (String.concat ~sep:" ; " @@ List.map ~f:(fun (k, v) -> Format.sprintf "(%s, %s)" (_to_string k) (_to_string v)) alist)
     | VUntouchable v -> Format.sprintf "Untouchable (%s)" (_to_string v)
     | VList ls -> Format.sprintf "[ %s ]" (String.concat ~sep:" ; " @@ List.map ~f:_to_string ls)
     | VMultiArgFunClosure { params ; closure } -> Format.sprintf "(fun %s -> %s)" (String.concat ~sep:" ; " @@ List.map ~f:(fun (Ident s) -> s) params) (_closure_to_string closure)
@@ -269,8 +261,8 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
     | VTypeUnit -> "unit"
     | VTypeRecord record_body -> RecordLabel.record_body_to_string ~sep:":" record_body _to_string
     | VTypeModule ls -> Format.sprintf "sig %s end" (String.concat ~sep:" " @@ List.map ls ~f:(fun (label, body) -> Format.sprintf "val %s : %s" (RecordLabel.to_string label) (_closure_to_string body)))
-    | VTypeFun { domain ; codomain ; det } -> Format.sprintf "(%s %s %s)" (_to_string domain) (if det then "-->" else "->") (_to_string codomain)
-    | VTypeDepFun { binding = Ident s ; domain ;  det ; codomain } -> Format.sprintf "((%s : %s) %s %s)" s (if det then "-->" else "->") (_to_string domain) (_closure_to_string codomain)
+    | VTypeFun { domain ; codomain } -> Format.sprintf "(%s -> %s)" (_to_string domain) (_to_string codomain)
+    | VTypeDepFun { binding = Ident s ; domain ; codomain } -> Format.sprintf "((%s : %s) -> %s)" s (_to_string domain) (_closure_to_string codomain)
     | VTypeRefinement { tau ; predicate } -> Format.sprintf "{ %s | %s }" (_to_string tau) (_to_string predicate)
     | VTypeSingleFun -> Format.sprintf "singletype"
     | VTypeSingle v -> Format.sprintf "(singletype (%s))" (_to_string v)

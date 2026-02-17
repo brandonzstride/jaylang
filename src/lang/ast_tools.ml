@@ -175,8 +175,8 @@ module Funsig = struct
         (* Create an arrow type (possibly dependent) out of all parameters *)
         List.fold_right (tvar_params @ params) ~init:ret_type ~f:(fun tvar codomain ->
           match tvar with
-          | TVar { var = _ ; tau } -> Expr.ETypeFun { domain = tau ; codomain ; dep = `No ; det = false }
-          | TVarDep { var ; tau } -> ETypeFun { domain = tau ; codomain ; dep = `Binding var ; det = false }
+          | TVar { var = _ ; tau } -> Expr.ETypeFun { domain = tau ; codomain ; dep = `No }
+          | TVarDep { var ; tau } -> ETypeFun { domain = tau ; codomain ; dep = `Binding var }
         )
       ) }
 end

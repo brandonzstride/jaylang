@@ -28,9 +28,9 @@ include
     end)
 *)
 
-let F (dependent A : sig val t : type --> type end)
+let F (dependent A : sig val t : type -> type end)
   (B : sig
-    val t : type --> type
+    val t : type -> type
     val f : (a : type) -> A.t a -> t a
   end) : sig end = struct end
 

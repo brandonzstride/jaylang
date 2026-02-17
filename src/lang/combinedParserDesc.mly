@@ -76,7 +76,6 @@ the language and which lines are erased.
 %token COLON
 %token INPUT
 %token INT_KEYWORD
-%token LONG_ARROW
 %token MU
 %token OF
 %token SIG
@@ -119,10 +118,6 @@ the language and which lines are erased.
 %token THAW
 %token ID
 %token IGNORE
-%token TABLE_CREATE
-%token TABLE_APPL
-%token DET
-%token ESCAPEDET
 %token INTENSIONAL_EQUAL
 %token UNTOUCHABLE
 (*! endscope !*)
@@ -151,7 +146,7 @@ the language and which lines are erased.
 (*! endscope !*)
 %right prec_variant           /* variants, lists */
 (*! scope bluejay desugared !*)
-%right ARROW LONG_ARROW       /* -> for type declaration, and --> for deterministic */
+%right ARROW                  /* -> for type declaration */
 (*! endscope !*)
 
 %start <statement list> prog
@@ -278,8 +273,6 @@ expr:
   (*! scope embedded !*)
   | CASE expr WITH PIPE? case_expr_list DEFAULT expr END
       { ECase { subject = $2; cases = $5; default = $7 } }
-  | TABLE_APPL OPEN_PAREN expr COMMA expr COMMA expr CLOSE_PAREN
-      { ETableAppl { tbl = $3; gen = $5; arg = $7; } }
   | INTENSIONAL_EQUAL OPEN_PAREN expr COMMA expr CLOSE_PAREN
       { EIntensionalEqual { left = $3; right = $5 } }
   (*! endscope !*)
@@ -300,13 +293,9 @@ expr:
   | MU l_ident list(l_ident) DOT expr %prec prec_mu
       { ETypeMu { var = $2 ; params = $3 ; body = $5 } : t}
   | expr ARROW expr
-      { ETypeFun { domain = $1 ; codomain = $3 ; dep = `No ; det = false } : t }
-  | expr LONG_ARROW expr
-      { ETypeFun { domain = $1 ; codomain = $3 ; dep = `No ; det = true } : t }
+      { ETypeFun { domain = $1 ; codomain = $3 ; dep = `No } : t }
   | OPEN_PAREN l_ident COLON expr CLOSE_PAREN ARROW expr
-      { ETypeFun { domain = $4 ; codomain = $7 ; dep = `Binding $2 ; det = false } : t }
-  | OPEN_PAREN l_ident COLON expr CLOSE_PAREN LONG_ARROW expr
-      { ETypeFun { domain = $4 ; codomain = $7 ; dep = `Binding $2 ; det = true } : t }
+      { ETypeFun { domain = $4 ; codomain = $7 ; dep = `Binding $2 } : t }
   (*! scope bluejay !*)
   | expr AMPERSAND expr
       { (* We need to restrict these expressions to the form
@@ -324,12 +313,9 @@ expr:
           | ETypeIntersect xs -> xs
           | ETypeFun { domain = ETypeVariant [(lbl,tIn)];
                        codomain = tOut;
-                       dep = `No;
-                       det = false;
+                       dep = `No
                      } ->
             [(lbl, tIn, tOut)]
-          | ETypeFun { det = true; _ } ->
-            failwith "TODO: error message: deterministic variable"
           | ETypeFun { dep = `Binding _; _ } ->
             failwith "TODO: error message: dependent variable"
           | ETypeFun { domain = ETypeVariant (_::_::_); _ } ->
@@ -422,10 +408,6 @@ appl_expr:
       { EFreeze $2 : t }
   | THAW primary_expr
       { EThaw $2 : t }
-  | DET primary_expr
-      { EDet $2 : t }
-  | ESCAPEDET primary_expr
-      { EEscapeDet $2 : t }
   | UNTOUCHABLE primary_expr
       { EUntouchable $2 : t }
   (*! endscope !*)
@@ -454,8 +436,6 @@ primary_expr:
       { EPick_b : t }
   | ID
       { EId : t }
-  | TABLE_CREATE
-      { ETableCreate : t }
   (*! endscope !*)
   (*! scope bluejay desugared !*)
   | TYPE

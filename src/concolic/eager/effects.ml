@@ -22,8 +22,6 @@ end
 
 module Err = struct
   include Status.Eval
-  let fail_on_nondeterminism_misuse (s : State.t) : t * State.t =
-    Status.Found_abort (State.inputs s, "Nondeterminism used when not allowed."), s
   let fail_on_fetch (id : Lang.Ast.Ident.t) (s : State.t) : t * State.t =
     Status.Unbound_variable (State.inputs s, id), s
   let fail_on_max_step (_step : int) (s : State.t) : t * State.t =
@@ -51,7 +49,6 @@ let push_branch (dir : k Direction.t) : unit m =
 module Step_symbol = Smt.Symbol.Make (Step)
 
 let get_input (type a) (make_key : Step.t -> a Feeder.Key.t) (feeder : Step.t Input_feeder.t) : Value.t m =
-  let%bind () = assert_nondeterminism in
   let%bind s = step in
   let key = make_key s in
   let v = feeder.get key in

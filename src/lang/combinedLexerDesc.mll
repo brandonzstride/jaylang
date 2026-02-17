@@ -90,7 +90,6 @@ rule token = parse
 | ">="                 { GREATER_EQUAL }
 | "|>"                 { PIPELINE }
 (*! scope bluejay desugared !*)
-| "-->"                { LONG_ARROW }
 | "bool"               { BOOL_KEYWORD }
 | "bottom"             { BOTTOM_KEYWORD }
 | "input"              { INPUT }
@@ -134,10 +133,6 @@ rule token = parse
 | "#thaw"              { THAW }
 | "#id"                { ID }
 | "#ignore"            { IGNORE }
-| "#tableCreate"       { TABLE_CREATE }
-| "#tableAppl"         { TABLE_APPL }
-| "#det"               { DET }
-| "#escapedet"         { ESCAPEDET }
 | "#intensionalEqual"  { INTENSIONAL_EQUAL }
 | "#untouchable"       { UNTOUCHABLE }
 (*! endscope !*)

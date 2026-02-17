@@ -241,10 +241,6 @@ module Expr = struct
     | EThaw : 'a t -> 'a embedded_only t
     | EId : 'a embedded_only t
     | EIgnore : { ignored : 'a t ; body : 'a t } -> 'a embedded_only t (* simply sugar for `let _ = ignored in body` but is more efficient *)
-    | ETableCreate : 'a embedded_only t
-    | ETableAppl : { tbl : 'a t ; gen : 'a t ; arg : 'a t } -> 'a embedded_only t
-    | EDet : 'a t -> 'a embedded_only t
-    | EEscapeDet : 'a t -> 'a embedded_only t
     | EIntensionalEqual : { left : 'a t ; right : 'a t } -> 'a embedded_only t
     | EUntouchable : 'a t -> 'a embedded_only t
     (* these exist in the desugared and embedded languages *)
@@ -261,7 +257,7 @@ module Expr = struct
     | ETypeUnit : 'a bluejay_or_desugared t
     | ETypeRecord : 'a t RecordLabel.Map.t -> 'a bluejay_or_desugared t
     | ETypeModule : (RecordLabel.t * 'a t) list -> 'a bluejay_or_desugared t (* is a list because order matters *)
-    | ETypeFun : { domain : 'a t ; codomain : 'a t ; dep : [ `No | `Binding of Ident.t ] ; det : bool } -> 'a bluejay_or_desugared t
+    | ETypeFun : { domain : 'a t ; codomain : 'a t ; dep : [ `No | `Binding of Ident.t ] } -> 'a bluejay_or_desugared t
     | ETypeRefinement : { tau : 'a t ; predicate : 'a t } -> 'a bluejay_or_desugared t
     | ETypeMu : { var : Ident.t ; params : Ident.t list ; body : 'a t } -> 'a bluejay_or_desugared t
     | ETypeVariant : (VariantTypeLabel.t * 'a t) list -> 'a bluejay_or_desugared t
@@ -382,7 +378,6 @@ module Expr = struct
           | EPick_i, EPick_i
           | EPick_b, EPick_b
           | EId, EId
-          | ETableCreate, ETableCreate
           | EType, EType
           | ETypeInt, ETypeInt
           | ETypeBool, ETypeBool
@@ -446,12 +441,6 @@ module Expr = struct
           | EIgnore r1, EIgnore r2 ->
             let- () = cmp r1.ignored r2.ignored in
             cmp r1.body r2.body
-          | ETableAppl r1, ETableAppl r2 ->
-            let- () = cmp r1.tbl r2.tbl in
-            let- () = cmp r1.gen r2.gen in
-            cmp r1.arg r2.arg
-          | EDet e1, EDet e2 -> cmp e1 e2
-          | EEscapeDet e1, EEscapeDet e2 -> cmp e1 e2
           | EUntouchable e1, EUntouchable e2 -> cmp e1 e2
           | EAbort s1, EAbort s2 -> String.compare s1 s2
           | EDefer e1, EDefer e2 -> cmp e1 e2
@@ -464,7 +453,6 @@ module Expr = struct
               ) m1 m2
           | ETypeFun r1, ETypeFun r2 -> begin
               let- () = cmp r1.domain r2.domain in
-              let- () = Bool.compare r1.det r2.det in
               match r1.dep, r2.dep with
               | `Binding id1, `Binding id2 ->
                 compare (Alist.cons_assoc id1 id2 bindings) r1.codomain r2.codomain
@@ -680,10 +668,6 @@ module Expr = struct
     | EThaw _ -> application_like
     | EId -> primary_atomic
     | EIgnore _ -> toplevel_expr (* simply sugar for `let _ = ignored in body` but is more efficient *)
-    | ETableCreate -> primary_atomic
-    | ETableAppl _ -> 1
-    | EDet _ -> application_like
-    | EEscapeDet _ -> application_like
     | EIntensionalEqual _ -> self_delimiting
     | EUntouchable _ -> application_like
     (* these exist in the desugared and embedded languages *)
@@ -813,14 +797,6 @@ module Expr = struct
     | EId -> "fun x -> x"
     | EIgnore { ignored ; body } -> (* equivalent to `let _ = ignored in body` but is more efficient *)
       Format.sprintf "#ignore %s in %s" (to_string ignored) (ppp_gt body)
-    | ETableCreate -> "#table"
-    | ETableAppl { tbl ; gen ; arg } ->
-      Format.sprintf "#table_appl (%s, %s, %s)"
-        (to_string tbl) (to_string gen) (to_string arg)
-    | EDet e ->
-      Format.sprintf "#det %s" (ppp_ge e)
-    | EEscapeDet e ->
-      Format.sprintf "#escapeDet %s" (ppp_ge e)
     | EIntensionalEqual { left; right } ->
       Format.sprintf "#intensionalEqual (%s, %s)" (to_string left) (to_string right)
     | EUntouchable e ->
@@ -847,13 +823,12 @@ module Expr = struct
           List.map ls ~f:(fun (label, expr) ->
               Format.sprintf "val %s : %s"
                 (RecordLabel.to_string label) (to_string expr)))
-    | ETypeFun { domain ; codomain ; dep ; det } ->
+    | ETypeFun { domain ; codomain ; dep } ->
       let arg1 = match dep with
         | `Binding Ident s -> Format.sprintf "(%s : %s)" s (ppp_ge domain)
         | `No -> Format.sprintf "%s" (ppp_ge domain) in
-      let arg2 = if det then "-->" else "->" in
-      let arg3 = ppp_gt codomain in
-      Format.sprintf "%s %s %s" arg1 arg2 arg3
+      let arg2 = ppp_gt codomain in
+      Format.sprintf "%s -> %s" arg1 arg2
     | ETypeRefinement { tau ; predicate } ->
       let tau_eval = to_string tau in
       let predicate_eval = to_string predicate in
@@ -990,73 +965,6 @@ module Bluejay = struct
   type typed_var = bluejay Expr.typed_var
   type param = bluejay Expr.param
   type statement = bluejay Expr.statement
-
-  let rec is_deterministic_pgm (pgm : pgm) : bool =
-    match pgm with
-    | [] -> true
-    | stmt :: tl ->
-      is_deterministic_pgm tl &&
-      match stmt with
-      | SUntyped { defn ; _ } -> is_det_e defn
-      | STyped { typed_var = { tau ; _ } ; defn ; _ } -> is_det_e tau && is_det_e defn
-      | SFun fsig -> is_det_fsig fsig
-      | SFunRec fsigs -> List.for_all fsigs ~f:is_det_fsig
-
-  and is_det_fsig (fsig : funsig) : bool =
-    match fsig with
-    | FUntyped { defn ; _ } -> is_det_e defn
-    | FTyped { params ; ret_type ; defn ; _ } ->
-      is_det_e ret_type
-      && is_det_e defn
-      && List.for_all params ~f:(function TVar { tau ; _ } | TVarDep { tau ; _ } -> is_det_e tau)
-
-  and is_det_e (expr : t) : bool =
-    match expr with
-    (* input is the only nondeterminism in bluejay. We're just looking for this *)
-    | EInput -> false
-    (* leaves *)
-    | EInt _ | EBool _ | EVar _ | EType | ETypeInt
-    | ETypeBool | ETypeTop | ETypeBottom | EAbstractType
-    | ETypeSingle | ETypeList | EUnit | ETypeUnit -> true
-    (* one subexpression *)
-    | EProject { record = e ; label = _ }
-    | ENot e
-    | EFunction { param = _ ; body = e }
-    | EVariant { label = _ ; payload = e }
-    | ETypeMu { var = _ ; params = _ ; body = e }
-    | EAssert e
-    | EAssume e
-    | EDefer e
-    | EMultiArgFunction { params = _ ; body = e } -> is_det_e e
-    (* two subexpressions *)
-    | EBinop { left = e1 ; binop = _ ; right = e2 }
-    | ELet { var = _ ; defn = e1 ; body = e2 }
-    | EAppl { func = e1 ; arg = e2 }
-    | ETypeFun { domain = e1 ; codomain = e2 ; dep = _ ; det = _ }
-    | ETypeRefinement { tau = e1 ; predicate = e2 }
-    | EListCons (e1, e2)
-      -> is_det_e e1 && is_det_e e2
-    (* three subexpressions *)
-    | EIf { cond = e1 ; true_body = e2 ; false_body = e3 }
-    | ELetTyped { typed_var = { var = _ ; tau = e1 } ; defn = e2 ; body = e3 ; typed_binding_opts = _ } ->
-      is_det_e e1
-      && is_det_e e2
-      && is_det_e e3
-    (* custom *)
-    | ELetFun { func ; body } -> is_det_fsig func && is_det_e body
-    | ELetFunRec { funcs ; body } ->
-      is_det_e body
-      && List.for_all funcs ~f:is_det_fsig
-    | EMatch { subject ; patterns } ->
-      is_det_e subject
-      && List.for_all patterns ~f:(fun (_pattern, e) -> is_det_e e)
-    | ERecord m
-    | ETypeRecord m -> Map.for_all m ~f:is_det_e
-    | ETypeModule ls -> List.for_all ls ~f:(fun (_label, e) -> is_det_e e)
-    | ETypeVariant ls -> List.for_all ls ~f:(fun (_label, e) -> is_det_e e)
-    | ETypeIntersect ls -> List.for_all ls ~f:(fun (_label, e1, e2) -> is_det_e e1 && is_det_e e2)
-    | EList ls -> List.for_all ls ~f:is_det_e
-    | EModule stmt_ls -> is_deterministic_pgm stmt_ls
 end
 
 type _ language =

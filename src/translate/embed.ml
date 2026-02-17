@@ -245,13 +245,11 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
           )
         ; wrap = lazy EId
         }
-    | ETypeFun { domain = tau1 ; codomain = tau2 ; dep ; det } ->
+    | ETypeFun { domain = tau1 ; codomain = tau2 ; dep } ->
       make_embedded_type
         { gen = lazy (
-              let tb = Names.fresh_id ~suffix:"tb" () in
               build @@
               let%bind nonce = capture ~suffix:"nonce" EPick_i in
-              let%bind () = if det then assign tb ETableCreate else return () in
               return @@ fresh_abstraction "arg_arrow_gen" @@ fun arg ->
               build @@
               let%bind () = ignore (EVar nonce) in
@@ -261,21 +259,19 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                 | `Binding x -> assign x (EVar arg)
                 | `No -> return ()
               in
-              if det
-              then return (ETableAppl { tbl = EVar tb ; gen = gen tau2 ; arg = EVar arg })
-              else return @@ gen tau2
+              return @@ gen tau2
             )
         ; check = lazy (
             fresh_abstraction "e_arrow_check" @@ fun e ->
             match dep with
             | `Binding x ->
               build @@
-              let%bind () = assign x @@ EEscapeDet (gen tau1) in
+              let%bind () = assign x @@ gen tau1 in
               let appl = apply (EVar e) (EVar x) in
-              return (check tau2 @@ if det then EDet appl else appl)
+              return (check tau2 appl)
             | `No ->
-              let appl = apply (EVar e) (EEscapeDet (gen tau1)) in
-              check tau2 @@ if det then EDet appl else appl
+              let appl = apply (EVar e) (gen tau1) in
+              check tau2 appl
           )
         ; wrap = lazy (
             fresh_abstraction "e_arrow_wrap" @@ fun e ->
@@ -394,7 +390,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
               build @@
               let%bind candidate = capture @@ gen tau in
               let%bind () = ignore @@ EDefer (EIf
-                                                { cond = EDet (apply (embed e_p) (EVar candidate))
+                                                { cond = apply (embed e_p) (EVar candidate)
                                                 ; true_body = EUnit
                                                 ; false_body = EVanish ()
                                                 })
@@ -407,7 +403,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             let%bind () = ignore @@ check tau (EVar e) in
             return @@ EDefer (
               EIf
-                { cond = EDet (apply (embed e_p) (EVar e))
+                { cond = apply (embed e_p) (EVar e)
                 ; true_body = EUnit
                 ; false_body = EAbort (Format.sprintf "Failed predicate on variable %s: %s" (let Ident s = e in s) (Expr.to_string e_p))
                 }
@@ -560,11 +556,9 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy (EVar tau)
         ; check = lazy (fresh_abstraction "t_singletype_check" @@ fun t -> 
-            EEscapeDet (
-              build @@
-              let%bind _ = ignore @@ check (EVar tau) (gen (EVar t)) in
-              return (check (EVar t) (gen (EVar tau)))
-            )
+            build @@
+            let%bind _ = ignore @@ check (EVar tau) (gen (EVar t)) in
+            return (check (EVar t) (gen (EVar tau)))
         )
         ; wrap = lazy EId
         }

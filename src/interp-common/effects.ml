@@ -16,7 +16,6 @@ end
 *)
 module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     type t
-    val fail_on_nondeterminism_misuse : State.t -> t * State.t
     val fail_on_fetch : Ast.Ident.t -> State.t -> t * State.t
     val fail_on_max_step : int -> State.t -> t * State.t
   end) = struct
@@ -26,9 +25,6 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
       ; det_depth : Det_depth.t } 
 
     let empty : t = { env = Env.empty ; det_depth = Det_depth.zero }
-
-    let is_determinism_allowed ({ det_depth ; _ } : t) : bool =
-      Det_depth.is_determinism_allowed det_depth
   end
 
   type empty_err = private | (* uninhabited type *)
@@ -196,12 +192,6 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
 
   let[@inline always][@specialise] with_escaped_det (x : 'a m) : 'a m =
     local_read (fun r -> { r with det_depth = Det_depth.escaped }) x
-
-  let assert_nondeterminism : unit m =
-    let%bind r = read in
-    if Read.is_determinism_allowed r
-    then return ()
-    else fail_map Err.fail_on_nondeterminism_misuse
 
   let[@inline always] fetch (id : Ast.Ident.t) : Env.value m =
     { run =

@@ -37,10 +37,6 @@ val with_incr_depth : 'a m -> 'a m
 val with_escaped_det : 'a m -> 'a m
 (** [with_escaped_depth m] runs [m] where nondeterminism is allowed. *)
 
-val assert_nondeterminism : unit m
-(** [assert_nondterminism] is a monadic error if the current environment does not allow nondeterminism.
-    Otherwise, nothing happens. *)
-
 val abort : string -> 'a m
 (** [abort msg] aborts with a monadic error with the given reason [msg]. *)
 

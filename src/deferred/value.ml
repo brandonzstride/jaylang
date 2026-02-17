@@ -30,7 +30,5 @@ let of_concolic (v : Concolic.Deferred.Value.whnf) (m : Concolic.Deferred.Value.
     (* Expressions FIXME : subst into env *)
     | VFunClosure { param ; closure = { env = _ ; body } } -> VFunClosure { param ; closure = { env = Without_symbols.Env.empty ; body } }
     | VFrozen { env = _ ; body } -> VFrozen { env = Without_symbols.Env.empty ; body }
-    (* Unhandled *)
-    | VTable { alist } -> VTable { alist = List.map alist ~f:(fun (dom, cod) -> subst dom, subst cod) }
   in
   subst (Concolic.Deferred.Value.cast_up v)

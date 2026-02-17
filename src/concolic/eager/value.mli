@@ -19,10 +19,6 @@ module Make (K : Smt.Symbol.KEY) : sig
   include module type of Lang.Value.Embedded (Concolic_value)
 
   include module type of T with type t = t
-
-  val intensional_equal : t -> t -> bool Concolic_value.t
-  (** [intensional_equal a b] is intensional equality of [a] and [b], comparing formulas
-      in the case of ints and bools. *)
 end
 
 module Default : module type of Make (Interp_common.Step)
