@@ -101,7 +101,7 @@ let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb) (f : Lan
     (* Get the deferred proof for the symbol from the current state. *)
     match Value.Pending_proofs.pop symb state.pending_proofs with   
     | None -> failwith "Invariant failure: popping symbol that does not exist in the symbol map"
-    | Some (closure, depth, remaining_pending_proofs) ->
+    | Some (closure, remaining_pending_proofs) ->
       (* When we go to work on a deferred proof, we only let it see the lesser symbols *)
       let to_keep, _, to_add_back = Time_map.split t remaining_pending_proofs in
       (* We will locally run with the time from the symbol and only the lesser pending proofs. *)
@@ -109,7 +109,7 @@ let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb) (f : Lan
         { state with time = t ; pending_proofs = to_keep } 
         step
         ()
-        { env = closure.env ; det_depth = depth } (* locally uses det depth from when symbol was pushed *)
+        closure.env
         ~reject ~accept:(fun v final_state final_step () ->
           accept v { final_state with
             time = state.time (* Restore original time now that f is done. *)
@@ -194,11 +194,11 @@ let push_branch (dir : k Direction.t) : unit m =
 
 let[@inline always] defer (body : Lang.Ast.Embedded.t) : Value.t m =
   { run =
-    fun ~reject:_ ~accept state step () r ->
+    fun ~reject:_ ~accept state step () env ->
       let symb = Value.VSymbol (Interp_common.Timestamp.push state.time) in
       accept (Value.cast_up symb) { state with 
         time = Interp_common.Timestamp.increment state.time
-      ; pending_proofs = Value.Pending_proofs.push symb { body ; env = r.env } r.det_depth state.pending_proofs 
+      ; pending_proofs = Value.Pending_proofs.push symb { body ; env } state.pending_proofs 
       } step ()
   }
 
@@ -215,7 +215,7 @@ let get_input (type a) (make_key : Timestamp.t -> a Key.Timekey.t) (feeder : Tim
     return @@ Value.symbolic_bool v k
 
 let run (x : 'a m) : 'a option * Value.Symbol_map.t * Status.Eval.t * k Path.t =
-  match run x State.empty Read.empty with
+  match run x State.empty Value.Env.empty with
   | Ok a, state, _, () ->
     Some a, state.symbol_map, Status.Finished, state.path
   | Error e, state, _, () -> None, state.symbol_map, e, state.path

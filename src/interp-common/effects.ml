@@ -19,14 +19,6 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     val fail_on_fetch : Ast.Ident.t -> State.t -> t * State.t
     val fail_on_max_step : int -> State.t -> t * State.t
   end) = struct
-  module Read = struct
-    type t = 
-      { env : Env.t
-      ; det_depth : Det_depth.t } 
-
-    let empty : t = { env = Env.empty ; det_depth = Det_depth.zero }
-  end
-
   type empty_err = private | (* uninhabited type *)
   let absurd (type a) (e : empty_err) : a =
     match e with _ -> . (* this function can never run *)
@@ -55,14 +47,14 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     run : 'r. 
       reject:('e -> State.t -> Step.t -> Builder.t -> 'r) -> 
       accept:('a -> State.t -> Step.t -> Builder.t -> 'r) ->
-      State.t -> Step.t -> Builder.t -> Read.t -> 'r
+      State.t -> Step.t -> Builder.t -> Env.t -> 'r
   } 
 
   let[@inline always][@specialise] bind (x : ('a, 'e) t) (f : 'a -> ('b, 'e) t) : ('b, 'e) t =
     { run =
-        fun ~reject ~accept state step b r ->
-          x.run state step b r ~reject ~accept:(fun x state step b ->
-              (f x).run ~reject ~accept state step b r
+        fun ~reject ~accept state step b e ->
+          x.run state step b e ~reject ~accept:(fun x state step b ->
+              (f x).run ~reject ~accept state step b e
             )
     }
 
@@ -84,17 +76,14 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     -----------
   *)
 
-  let read : (Read.t, 'e) t =
-    { run = fun ~reject:_ ~accept state step b r -> accept r state step b }
+  let read : (Env.t, 'e) t =
+    { run = fun ~reject:_ ~accept state step b e -> accept e state step b }
 
   let read_env : (Env.t, 'e) t =
-    { run = fun ~reject:_ ~accept state step b r -> accept r.env state step b }
-
-  let[@inline always][@specialise] local_read (f : Read.t -> Read.t) (x : ('a, 'e) t) : ('a, 'e) t =
-    { run = fun ~reject ~accept state step b r -> x.run ~reject ~accept state step b (f r) }
+    { run = fun ~reject:_ ~accept state step b e -> accept e state step b }
 
   let[@inline always][@specialise] local (f : Env.t -> Env.t) (x : ('a, 'e) t) : ('a, 'e) t =
-    local_read (fun r -> { r with env = f r.env }) x
+    { run = fun ~reject ~accept state step b e -> x.run ~reject ~accept state step b (f e) }
 
   (*
     -----
@@ -145,13 +134,13 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     { run = fun ~reject ~accept:_ state step b _ -> Tuple2.uncurry reject (f state) step b }
 
   let[@inline always] handle_error (x : ('a, 'e1) t) (ok : 'a -> ('b, 'e2) t) (err : Err.t -> ('b, 'e2) t) : ('b, 'e2) t =
-    { run = fun ~reject ~accept state step b r ->
-          x.run state step b r 
+    { run = fun ~reject ~accept state step b e ->
+          x.run state step b e 
             ~reject:(fun a state step b ->
-                (err a).run ~reject ~accept state step b r
+                (err a).run ~reject ~accept state step b e
               )
             ~accept:(fun a state step b ->
-                (ok a).run ~reject ~accept state step b r
+                (ok a).run ~reject ~accept state step b e
               )
     }
 
@@ -162,11 +151,11 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
   *)
 
   (* May prefer to pass in only init_env, but init_read gives more flexibility *)
-  let run (x : 'a m) (init_state : State.t) (init_read : Read.t) : ('a, Err.t) result * State.t * Step.t * Builder.t =
-    x.run ~reject:(fun e state step b -> Error e, state, step, b) ~accept:(fun a state step b -> Ok a, state, step, b) init_state Step.zero Builder.empty init_read
+  let run (x : 'a m) (init_state : State.t) (init_env : Env.t) : ('a, Err.t) result * State.t * Step.t * Builder.t =
+    x.run ~reject:(fun e state step b -> Error e, state, step, b) ~accept:(fun a state step b -> Ok a, state, step, b) init_state Step.zero Builder.empty init_env
 
-  let run_safe (x : 'a s) (init_state : State.t) (init_read : Read.t) : 'a * State.t * Step.t * Builder.t =
-    x.run ~reject:absurd ~accept:(fun a state step b -> a, state, step, b) init_state Step.zero Builder.empty init_read
+  let run_safe (x : 'a s) (init_state : State.t) (init_env : Env.t) : 'a * State.t * Step.t * Builder.t =
+    x.run ~reject:absurd ~accept:(fun a state step b -> a, state, step, b) init_state Step.zero Builder.empty init_env
 
   (*
     -----------------
@@ -186,17 +175,10 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
           else accept () state step b
     }
 
-
-  let[@inline always][@specialise] with_incr_depth (x : ('a, 'e) t) : ('a, 'e) t =
-    local_read (fun r -> { r with det_depth = Det_depth.incr r.det_depth }) x
-
-  let[@inline always][@specialise] with_escaped_det (x : 'a m) : 'a m =
-    local_read (fun r -> { r with det_depth = Det_depth.escaped }) x
-
   let[@inline always] fetch (id : Ast.Ident.t) : Env.value m =
     { run =
-        fun ~reject ~accept state step b r ->
-          match Env.fetch id r.env with
+        fun ~reject ~accept state step b e ->
+          match Env.fetch id e with
           | None -> let e, s = Err.fail_on_fetch id state in reject e s step b
           | Some v -> accept v state step b
     }

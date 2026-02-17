@@ -161,17 +161,17 @@ module Make (V : Utils.Equatable.P1) = struct
   end
 
   module Pending_proofs = struct
-    type t = (closure * Interp_common.Det_depth.t) Time_map.t
+    type t = closure Time_map.t
 
     let empty : t = Time_map.empty
 
     (* May want to raise an exception, just to check invariants, if the symbol is duplicate *)
-    let push (VSymbol t : symb) (work : closure) (depth : Interp_common.Det_depth.t) (m : t) : t =
-      Time_map.add t (work, depth) m
+    let push (VSymbol t : symb) (work : closure) (m : t) : t =
+      Time_map.add t work m
 
-    let pop (VSymbol t : symb) (m : t) : (closure * Interp_common.Det_depth.t * t) option =
-      Option.map (Time_map.find_opt t m) ~f:(fun (closure, depth) ->
-        closure, depth, Time_map.remove t m
+    let pop (VSymbol t : symb) (m : t) : (closure * t) option =
+      Option.map (Time_map.find_opt t m) ~f:(fun closure ->
+        closure, Time_map.remove t m
       )
 
     (*

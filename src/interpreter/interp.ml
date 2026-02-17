@@ -454,7 +454,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     return (VModule module_body)
   in
 
-  (run (eval e) State.initial Read.empty)
+  (run (eval e) State.initial Env.empty)
   |> fun (res, _, _, timed_inputs) ->
   (match res with
    | Ok r -> Format.printf "OK:\n  %s\n" (V.to_string r); r

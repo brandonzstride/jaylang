@@ -31,12 +31,6 @@ val read_env : Value.Env.t m
   --------------
 *)
 
-val with_incr_depth : 'a m -> 'a m
-(** [with_incr_depth m] runs [m] where the depth of determinism wrappings is locally increased. *)
-
-val with_escaped_det : 'a m -> 'a m
-(** [with_escaped_depth m] runs [m] where nondeterminism is allowed. *)
-
 val abort : string -> 'a m
 (** [abort msg] aborts with a monadic error with the given reason [msg]. *)
 
