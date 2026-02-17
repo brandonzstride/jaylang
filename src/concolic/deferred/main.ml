@@ -21,7 +21,7 @@ let deferred_interp expr input_feeder ~max_step =
   let rec eval ?(is_stern : bool = false) (expr : Embedded.t) : Value.t m =
     let open Value in
     let k = eval ~is_stern in
-    let%bind () = incr_step ~max_step in
+    let* () = incr_step ~max_step in
     match expr with
     | EUnit -> return VUnit
     | EInt i -> return @@ VInt (i, Smt.Formula.const_int i)
@@ -32,8 +32,8 @@ let deferred_interp expr input_feeder ~max_step =
     | EPick_b -> get_input Interp_common.Key.Timekey.bool_ input_feeder
     (* operations *)
     | EBinop { left ; binop ; right } -> begin
-        let%bind vleft = stern_eval left in
-        let%bind vright = stern_eval right in
+        let* vleft = stern_eval left in
+        let* vright = stern_eval right in
         let k f e1 e2 op =
           return @@ f (Smt.Formula.binop op e1 e2)
         in
@@ -58,13 +58,15 @@ let deferred_interp expr input_feeder ~max_step =
         | _ -> type_mismatch @@ Error_msg.bad_binop vleft binop vright
       end
     | ENot expr -> begin
-        match%bind stern_eval expr with
+        let* v = stern_eval expr in
+        match v with
         | VBool (b, e_b) -> return @@ VBool (not b, Smt.Formula.not_ e_b)
         | v -> type_mismatch @@ Error_msg.bad_not v
       end
     | EProject { record ; label } -> begin
-        match%bind stern_eval record with
-        | (VRecord body | VModule body) as v -> begin
+        let* v = stern_eval record in
+        match v with
+        | VRecord body | VModule body -> begin
             match Map.find body label with
             | Some v -> return (Value.cast_up v)
             | None -> type_mismatch @@ Error_msg.project_missing_label label v
@@ -73,7 +75,7 @@ let deferred_interp expr input_feeder ~max_step =
       end
     (* control flow / branches *)
     | EMatch { subject ; patterns  } -> begin
-        let%bind v = stern_eval subject in
+        let* v = stern_eval subject in
         match
           List.find_map patterns ~f:(fun (pat, body) ->
               match Value.matches v pat with
@@ -86,65 +88,68 @@ let deferred_interp expr input_feeder ~max_step =
         | None -> type_mismatch @@ Error_msg.pattern_not_found patterns v
       end
     | EIf { cond ; true_body ; false_body } -> begin
-        match%bind stern_eval cond with
+        let* v = stern_eval cond in
+        match v with
         | VBool (b, e_b) ->
-          (* let%bind () = incr_time in *) (* time is not actually needed in practice on branches *)
+          (* let* () = incr_time in *) (* time is not actually needed in practice on branches *)
           let body = if b then true_body else false_body in
-          let%bind () = push_branch (Direction.Bool_direction (b, e_b)) in
+          let* () = push_branch (Direction.Bool_direction (b, e_b)) in
           k body
         | v -> type_mismatch @@ Error_msg.cond_non_bool v
       end
     | ECase { subject ; cases ; default } -> begin
         let int_cases = List.map cases ~f:Tuple2.get1 in
-        match%bind stern_eval subject with
+        let* v = stern_eval subject in
+        match v with
         | VInt (i, e_i) -> begin
-            (* let%bind () = incr_time in *) (* time is not actually needed in practice on branches *)
+            (* let* () = incr_time in *) (* time is not actually needed in practice on branches *)
             let body_opt = List.find_map cases ~f:(fun (i', body) -> if i = i' then Some body else None) in
             match body_opt with
             | Some body -> 
               let not_in = List.filter int_cases ~f:((<>) i) in
-              let%bind () = push_branch (Direction.Int_direction { dir = Case_int i ; formula = e_i ; not_in }) in
+              let* () = push_branch (Direction.Int_direction { dir = Case_int i ; formula = e_i ; not_in }) in
               k body
             | None -> 
-              let%bind () = push_branch (Direction.Int_direction { dir = Case_default ; formula = e_i ; not_in = int_cases }) in
+              let* () = push_branch (Direction.Int_direction { dir = Case_default ; formula = e_i ; not_in = int_cases }) in
               k default
           end
         | v -> type_mismatch @@ Error_msg.case_non_int v
       end
     (* closures and applications *)
     | EFunction { param ; body } ->
-      let%bind env = read_env in
+      let* env = read_env in
       return (VFunClosure { param ; closure = { body ; env }})
     | ELet { var ; defn ; body } ->
-      let%bind v = eval defn in
+      let* v = eval defn in
       local (Env.add var v) (eval body)
     | EAppl { func ; arg } -> begin
-        match%bind stern_eval func with
+        let* v = stern_eval func in
+        match v with
         | VFunClosure { param ; closure } ->
-          let%bind v = eval arg in 
+          let* v = eval arg in 
           local (fun _ -> Env.add param v closure.env) (k closure.body)
         | v -> type_mismatch @@ Error_msg.bad_appl v
       end
     (* modules, records, and variants  *)
     | ERecord label_map ->
-      let%bind value_record_body =
+      let* value_record_body =
         Map.fold label_map ~init:(return Lang.Ast.RecordLabel.Map.empty) ~f:(fun ~key ~data:e acc_m ->
-            let%bind acc = acc_m in
-            let%bind v = eval e in
+            let* acc = acc_m in
+            let* v = eval e in
             return @@ Map.set acc ~key ~data:v
           )
       in
       return @@ VRecord value_record_body
     | EVariant { label ; payload } ->
-      let%bind v = eval payload in
+      let* v = eval payload in
       return (VVariant { label ; payload = v })
     | EModule stmt_ls ->
-      let%bind module_body =
+      let* module_body =
         let rec fold_stmts acc_m : Embedded.statement list -> Value.t Lang.Ast.RecordLabel.Map.t m = function
           | [] -> acc_m
           | SUntyped { var ; defn } :: tl ->
-            let%bind acc = acc_m in
-            let%bind v = eval defn in
+            let* acc = acc_m in
+            let* v = eval defn in
             local (Env.add var v) (
               fold_stmts (return @@ Map.set acc ~key:(Lang.Ast.RecordLabel.RecordLabel var) ~data:v) tl
             )
@@ -153,7 +158,7 @@ let deferred_interp expr input_feeder ~max_step =
       in
       return @@ VModule module_body 
     | EUntouchable e ->
-      let%bind v = eval e in
+      let* v = eval e in
       return (VUntouchable v)
     (* deferral *)
     | EDefer body -> if is_stern then k body else defer body
@@ -173,18 +178,18 @@ let deferred_interp expr input_feeder ~max_step =
     match expr with
     | EDefer body -> stern_eval body (* When sternly evaluating a deferred thing, we can just directly eval the thing *)
     | _ ->
-      let%bind v = eval ~is_stern:true expr in
-      let%bind () = incr_step ~max_step in
-      let%bind () = incr_n_stern_steps in
+      let* v = eval ~is_stern:true expr in
+      let* () = incr_step ~max_step in
+      let* () = incr_n_stern_steps in
       Value.split v
         ~symb:(fun ((VSymbol t) as sym) ->
-            let%bind s = get in
+            let* s = get in
             match Time_map.find_opt t s.symbol_map with
             | Some v -> return v
             | None -> map_deferred_proof sym stern_eval
           )
         ~whnf:(fun v -> 
-            let%bind () = optionally_map_some_deferred_proof stern_eval in
+            let* () = optionally_map_some_deferred_proof stern_eval in
             return v
           )
 
@@ -196,7 +201,7 @@ let deferred_interp expr input_feeder ~max_step =
     keep the smallest error.
   *)
   and clean_up_deferred (final : Value.ok res) : Value.ok res s =
-    let%bind s = get in
+    let* s = get in
     match Time_map.choose_opt s.pending_proofs with
     | None -> return final (* done! can finish with how we're told to finish *)
     | Some (t, _) -> (* some cleanup to do, so do it, and then keep looping after that *)
@@ -207,7 +212,7 @@ let deferred_interp expr input_feeder ~max_step =
   in
 
   let begin_stern_loop (expr : Embedded.t) : Value.ok res s =
-    let%bind r =
+    let* r =
       handle_error (stern_eval expr)
         (fun v -> return (V v))
         (fun e -> return (E e))

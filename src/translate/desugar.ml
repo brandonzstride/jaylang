@@ -68,7 +68,7 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
         | (BDivide | BModulus) when match right with EInt _ -> false | _ -> true -> (* protect with branch when right is anything but an int literal *)
           build @@
           let v = Names.fresh_id () in
-          let%bind () = assign v @@ desugar right in
+          let* () = assign v @@ desugar right in
           return @@ EIf 
             { cond = EBinop { left = EVar v ; binop = BEqual ; right = EInt 0 }
             ; true_body = EAbort "Divide or modulo by 0"
@@ -188,7 +188,7 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
     | ELetFun { func ; body } -> begin
         let { func_id ; defn ; params ; tau_opt } : desugared Function_components.t = funsig_to_components func in
         build @@
-        let%bind () =
+        let* () =
           assign ~ty:(Binding.Ty.typed_of_tau_opt tau_opt) func_id (
             abstract_over_ids params defn
           )
@@ -224,8 +224,8 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
         { variant_label = Reserved.cons
         ; payload_id = r }
     , build @@
-      let%bind () = assign hd_id (EProject { record = EVar r ; label = Reserved.hd }) in
-      let%bind () = assign tl_id (EProject { record = EVar r ; label = Reserved.tl }) in
+      let* () = assign hd_id (EProject { record = EVar r ; label = Reserved.hd }) in
+      let* () = assign tl_id (EProject { record = EVar r ; label = Reserved.tl }) in
       return (desugar e)
     | (PAny | PVariable _ | PVariant _) as p -> p, desugar e
 
@@ -259,7 +259,7 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
             | _ ->
               (* default behavior uses the actual function body *)
               build @@
-              let%bind () = assign ~ty:(Binding.Ty.typed_of_tau_opt ~do_check:false comps.tau_opt) comps.func_id (
+              let* () = assign ~ty:(Binding.Ty.typed_of_tau_opt ~do_check:false comps.tau_opt) comps.func_id (
                   abstract_over_ids comps.params comps.defn
                 )
               in

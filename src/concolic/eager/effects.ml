@@ -31,11 +31,11 @@ end
 include Interp_common.Effects.Make (State) (Utils.Builder.Unit_builder) (Value.Env) (Err)
 
 let abort (msg : string) : 'a m =
-  let%bind s = get in
+  let* s = get in
   fail (Status.Found_abort (State.inputs s, msg))
 
 let type_mismatch (msg : string) : 'a m =
-  let%bind s = get in
+  let* s = get in
   fail (Status.Type_mismatch (State.inputs s, msg))
 
 let vanish : 'a m =
@@ -49,15 +49,15 @@ let push_branch (dir : k Direction.t) : unit m =
 module Step_symbol = Smt.Symbol.Make (Step)
 
 let get_input (type a) (make_key : Step.t -> a Feeder.Key.t) (feeder : Step.t Input_feeder.t) : Value.t m =
-  let%bind s = step in
+  let* s = step in
   let key = make_key s in
   let v = feeder.get key in
   match key with
   | I k -> 
-    let%bind () = modify (fun s -> { s with rev_inputs = I v :: s.rev_inputs }) in
+    let* () = modify (fun s -> { s with rev_inputs = I v :: s.rev_inputs }) in
     return @@ Value.M.VInt (v, Smt.Formula.symbol (Step_symbol.make_int k))
   | B k ->
-    let%bind () = modify (fun s -> { s with rev_inputs = B v :: s.rev_inputs }) in
+    let* () = modify (fun s -> { s with rev_inputs = B v :: s.rev_inputs }) in
     return @@ Value.M.VBool (v, Smt.Formula.symbol (Step_symbol.make_bool k))
 
 let run (x : 'a m) : Status.Eval.t * k Path.t =

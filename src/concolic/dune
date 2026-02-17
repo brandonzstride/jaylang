@@ -22,5 +22,4 @@
   (pps
    ppx_sexp_conv
    ppx_compare
-   ppx_variants_conv
-   ocaml-monadic)))
+   ppx_variants_conv)))

@@ -21,7 +21,7 @@ let eager_eval
 
   let rec eval (expr : Embedded.t) : Value.t m =
     let open Value.M in (* puts the value constructors in scope *)
-    let%bind () = incr_step ~max_step in
+    let* () = incr_step ~max_step in
     match expr with
     (* Ints and bools -- constant expressions *)
     | EInt i -> return @@ VInt (i, Smt.Formula.const_int i)
@@ -31,17 +31,18 @@ let eager_eval
     | EUnit -> return VUnit
     | EVar id -> fetch id
     | EFunction { param ; body } ->
-      let%bind env = read_env in
+      let* env = read_env in
       return @@ VFunClosure { param ; closure = { body ; env } }
     | EVariant { label ; payload = e_payload } -> 
-      let%bind payload = eval e_payload in
+      let* payload = eval e_payload in
       return @@ VVariant { label ; payload }
     | EUntouchable e ->
-      let%bind v = eval e in
+      let* v = eval e in
       return @@ VUntouchable v
     | EProject { record = e_record ; label } -> begin
-        match%bind eval e_record with
-        | (VRecord body | VModule body) as v -> begin
+        let* v = eval e_record in
+        match v with
+        | VRecord body | VModule body -> begin
             match Map.find body label with
             | Some v -> return v
             | None -> type_mismatch @@ Error_msg.project_missing_label label v
@@ -49,21 +50,21 @@ let eager_eval
         | v -> type_mismatch @@ Error_msg.project_non_record label v
       end
     | ERecord record_body ->
-      let%bind value_record_body =
+      let* value_record_body =
         Map.fold record_body ~init:(return RecordLabel.Map.empty) ~f:(fun ~key ~data:e acc_m ->
-            let%bind acc = acc_m in
-            let%bind v = eval e in
+            let* acc = acc_m in
+            let* v = eval e in
             return @@ Map.set acc ~key ~data:v
           )
       in
       return @@ VRecord value_record_body
     | EModule stmt_ls ->
-      let%bind module_body =
+      let* module_body =
         let rec fold_stmts acc_m = function
           | [] -> acc_m
           | SUntyped { var ; defn } :: tl ->
-            let%bind acc = acc_m in
-            let%bind v = eval defn in
+            let* acc = acc_m in
+            let* v = eval defn in
             local (Env.add var v) (
               fold_stmts (return @@ Map.set acc ~key:(RecordLabel.RecordLabel var) ~data:v) tl
             )
@@ -72,7 +73,7 @@ let eager_eval
       in
       return @@ VModule module_body 
     | EMatch { subject ; patterns } -> begin (* Note: there cannot be symbolic branching on match *)
-        let%bind v = eval subject in
+        let* v = eval subject in
         match
           (* find the matching pattern and add to env any values capture by the pattern *)
           List.find_map patterns ~f:(fun (pat, body) ->
@@ -87,20 +88,20 @@ let eager_eval
         | None -> type_mismatch @@ Error_msg.pattern_not_found patterns v
       end
     | ELet { var ; defn ; body } ->
-      let%bind v = eval defn in
+      let* v = eval defn in
       local (Env.add var v) (eval body)
     | EAppl { func ; arg } -> begin
-        let%bind vfunc = eval func in
+        let* vfunc = eval func in
         match vfunc with
         | VFunClosure { param ; closure } ->
-          let%bind varg = eval arg in
+          let* varg = eval arg in
           local (fun _ -> Env.add param varg closure.env) (eval closure.body)
         | _ -> type_mismatch @@ Error_msg.bad_appl vfunc
       end
     (* Operations -- build new expressions *)
     | EBinop { left ; binop ; right } -> begin
-        let%bind vleft = eval left in
-        let%bind vright = eval right in
+        let* vleft = eval left in
+        let* vright = eval right in
         let k f e1 e2 op =
           return @@ f (Smt.Formula.binop op e1 e2)
         in
@@ -125,31 +126,34 @@ let eager_eval
         | _ -> type_mismatch @@ Error_msg.bad_binop vleft binop vright
       end
     | ENot e_not_body -> begin
-        match%bind eval e_not_body with
+        let* v = eval e_not_body in
+        match v with
         | VBool (b, e_b) -> return @@ VBool (not b, Smt.Formula.not_ e_b) 
         | v -> type_mismatch @@ Error_msg.bad_not v
       end
     (* Branching *)
     | EIf { cond ; true_body ; false_body } -> begin
-        match%bind eval cond with
+        let* v = eval cond in
+        match v with
         | VBool (b, e) ->
           let body = if b then true_body else false_body in
-          let%bind () = push_branch (Direction.Bool_direction (b, e)) in
+          let* () = push_branch (Direction.Bool_direction (b, e)) in
           eval body
         | v -> type_mismatch @@ Error_msg.cond_non_bool v
       end
     | ECase { subject ; cases ; default } -> begin
         let int_cases = List.map cases ~f:Tuple2.get1 in
-        match%bind eval subject with
+        let* v = eval subject in
+        match v with
         | VInt (i, e) -> begin
             let body_opt = List.find_map cases ~f:(fun (i', body) -> if i = i' then Some body else None) in
             match body_opt with
             | Some body -> (* found a matching case *)
               let not_in = List.filter int_cases ~f:((<>) i) in
-              let%bind () = push_branch (Direction.Int_direction { dir = Case_int i ; formula = e ; not_in }) in
+              let* () = push_branch (Direction.Int_direction { dir = Case_int i ; formula = e ; not_in }) in
               eval body
             | None -> (* no matching case, so take default case *)
-              let%bind () = push_branch (Direction.Int_direction { dir = Case_default ; formula = e ; not_in = int_cases }) in
+              let* () = push_branch (Direction.Int_direction { dir = Case_default ; formula = e ; not_in = int_cases }) in
               eval default
           end
         | v -> type_mismatch @@ Error_msg.case_non_int v

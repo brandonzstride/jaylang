@@ -19,6 +19,7 @@ module Monad : Types.MONAD with type 'a m = 'a = struct
   type 'a m = 'a
   let[@inline always] return a = a
   let[@inline always] bind x f = f x
+  let ( let* ) = bind
 end
 
 module Transformer (M : Types.MONAD) : Types.TRANSFORMED with type 'a m = 'a M.m and type 'a lower := 'a M.m = struct

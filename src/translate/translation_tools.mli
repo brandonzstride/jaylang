@@ -28,10 +28,7 @@ module Let_builder (L : sig
       e.g. implementation [fun (var, defn) ~body -> ELet { var ; defn ; body }].
       i.e. take one tape item and turn it into a let binding. *)
 end) : sig
-  type 'a m
-
-  val bind : 'a m -> ('a -> 'b m) -> 'b m
-  val return : 'a -> 'a m
+  include Utils.Types.MONAD
 
   val tell : L.t -> unit m
   (** [tell t] writes [t] to the tape. *)

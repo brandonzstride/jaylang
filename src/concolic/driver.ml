@@ -89,8 +89,8 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
           type t = Status.Terminal.t Log.m
           let neutral : t = Log.return Status.Exhausted_full_tree
           let combine : t -> t -> t = fun am bm ->
-            let%bind a = am in
-            let%bind b = bm in
+            let* a = am in
+            let* b = bm in
             return @@
             match a, b with
             (* keep the message that says to quit *)

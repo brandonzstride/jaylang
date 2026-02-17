@@ -36,7 +36,8 @@ end) = struct
     module M = Preface.Writer.Over (Preface.List.Monoid (L))
     include M
     type 'a m = 'a M.t
-    let bind x f = M.bind f x (* our ppx uses the other argument order *)
+    let (let*) = M.Syntax.( let* )
+    let bind x f = bind f x (* Preface defines this in a strange order. Flip it. *)
     let tell a = tell [ a ] (* in our use case, we only write one at a time, so alias for that *)
   end
 
@@ -44,7 +45,7 @@ end) = struct
 
   let iter (ls : 'a list) ~(f : 'a -> unit m) : unit m =
     List.fold ls ~init:(return ()) ~f:(fun acc_m a ->
-      let%bind () = acc_m in
+      let* () = acc_m in
       f a
     )
 

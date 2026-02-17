@@ -34,8 +34,6 @@
   moonpool
   vector
   z3
-  (ocaml-monadic
-   (>= 0.4.1))
   (ppx_deriving
    (>= 3.2))))
 

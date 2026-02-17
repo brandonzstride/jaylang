@@ -58,6 +58,8 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
             )
     }
 
+  let (let*) = bind
+
   let[@inline always][@specialise] return (a : 'a) : ('a, 'e) t =
     { run = fun ~reject:_ ~accept state step b _ -> accept a state step b }
 

@@ -56,6 +56,7 @@ module Over_monad_with_builder (B : Builder.S) (M : Types.MONAD) : FULL with mod
           M.return (b, t)
         )
       )
+  let ( let* ) = bind
 end
 
 module Transformer_of_builder (B : Builder.S) : TRANSFORMER with module B = B = struct

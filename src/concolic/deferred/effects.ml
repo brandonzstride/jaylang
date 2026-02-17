@@ -71,11 +71,11 @@ include Interp_common.Effects.Make (State) (Utils.Builder.Unit_builder) (Value.E
 (*
   This is meant to be equivalent to
 
-    let%bind s = get in
+    let* s = get in
     let t = s.time in
-    let%bind () = modify (fun s -> { s with time }) in
-    let%bind a = x in
-    let%bind () = modify (fun s -> { s with time = t }) in
+    let* () = modify (fun s -> { s with time }) in
+    let* a = x in
+    let* () = modify (fun s -> { s with time = t }) in
     return a
 
   I sure hope it is.
@@ -203,15 +203,15 @@ let[@inline always] defer (body : Lang.Ast.Embedded.t) : Value.t m =
   }
 
 let get_input (type a) (make_key : Timestamp.t -> a Key.Timekey.t) (feeder : Timestamp.t Input_feeder.t) : Value.t m =
-  let%bind state = get in
+  let* state = get in
   let key = make_key state.time in
   let v = feeder.get key in
   match key with
   | I k -> 
-    let%bind () = modify (fun s -> { s with inputs = (I v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
+    let* () = modify (fun s -> { s with inputs = (I v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
     return @@ Value.symbolic_int v k
   | B k ->
-    let%bind () = modify (fun s -> { s with inputs = (B v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
+    let* () = modify (fun s -> { s with inputs = (B v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
     return @@ Value.symbolic_bool v k
 
 let run (x : 'a m) : 'a option * Value.Symbol_map.t * Status.Eval.t * k Path.t =

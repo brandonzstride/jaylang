@@ -34,7 +34,7 @@ module LetMonad (Names : Fresh_names.S) = struct
   *)
   let capture ?(suffix : string option) (e : Embedded.t) : Ident.t m =
     let v = Names.fresh_id ?suffix () in
-    let%bind () = tell (Bind (v, e)) in
+    let* () = tell (Bind (v, e)) in
     return v
 
   (*
@@ -249,12 +249,12 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy (
               build @@
-              let%bind nonce = capture ~suffix:"nonce" EPick_i in
+              let* nonce = capture ~suffix:"nonce" EPick_i in
               return @@ fresh_abstraction "arg_arrow_gen" @@ fun arg ->
               build @@
-              let%bind () = ignore (EVar nonce) in
-              let%bind () = ignore (EDefer (check tau1 (EVar arg))) in
-              let%bind () =
+              let* () = ignore (EVar nonce) in
+              let* () = ignore (EDefer (check tau1 (EVar arg))) in
+              let* () =
                 match dep with 
                 | `Binding x -> assign x (EVar arg)
                 | `No -> return ()
@@ -266,7 +266,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             match dep with
             | `Binding x ->
               build @@
-              let%bind () = assign x @@ gen tau1 in
+              let* () = assign x @@ gen tau1 in
               let appl = apply (EVar e) (EVar x) in
               return (check tau2 appl)
             | `No ->
@@ -277,11 +277,11 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             fresh_abstraction "e_arrow_wrap" @@ fun e ->
             fresh_abstraction "x_arrow_wrap" @@ fun arg ->
             build @@
-            let%bind () = ignore (EDefer (check tau1 (EVar arg))) 
+            let* () = ignore (EDefer (check tau1 (EVar arg))) 
             in
             match dep with
             | `Binding x ->
-              let%bind () = assign x @@ (*wrap tau1*) (EVar arg) in
+              let* () = assign x @@ (*wrap tau1*) (EVar arg) in
               return (wrap tau2 (apply (EVar e) (EVar x)))
             | `No ->
               return @@ wrap tau2 (
@@ -298,7 +298,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                    ; patterns = 
                        let body = 
                          build @@
-                         let%bind () =
+                         let* () =
                            iter (Map.to_alist m) ~f:(fun (label, tau) ->
                                ignore (check tau (proj (EVar e) label))
                              )
@@ -329,9 +329,9 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                    ; patterns =
                        [ PModule
                        , build @@
-                         let%bind () =
+                         let* () =
                            iter ls ~f:(fun (RecordLabel label_id as l, tau) ->
-                               let%bind () = ignore @@ check tau (proj (EVar e) l) in
+                               let* () = ignore @@ check tau (proj (EVar e) l) in
                                assign label_id @@ proj (EVar e) l
                              )
                          in
@@ -349,7 +349,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy (
               build @@
-              let%bind i = capture EPick_i in
+              let* i = capture EPick_i in
               return @@
               E.make ~ask_for:`All
                 { gen = lazy (EUntouchable (
@@ -377,9 +377,9 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             fresh_abstraction "e_type_check" @@ fun e ->
             build @@  
             let e = EVar e in
-            let%bind () = ignore @@ proj e Reserved.gen in
-            let%bind () = ignore @@ proj e Reserved.check in
-            let%bind () = if do_wrap then ignore @@ proj e Reserved.wrap else return () in
+            let* () = ignore @@ proj e Reserved.gen in
+            let* () = ignore @@ proj e Reserved.check in
+            let* () = if do_wrap then ignore @@ proj e Reserved.wrap else return () in
             return EUnit
           ) 
         ; wrap = lazy eid
@@ -388,8 +388,8 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy (
               build @@
-              let%bind candidate = capture @@ gen tau in
-              let%bind () = ignore @@ EDefer (EIf
+              let* candidate = capture @@ gen tau in
+              let* () = ignore @@ EDefer (EIf
                                                 { cond = apply (embed e_p) (EVar candidate)
                                                 ; true_body = EUnit
                                                 ; false_body = EVanish ()
@@ -400,7 +400,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
         ; check = lazy (
             fresh_abstraction "e_ref_check" @@ fun e ->
             build @@
-            let%bind () = ignore @@ check tau (EVar e) in
+            let* () = ignore @@ check tau (EVar e) in
             return @@ EDefer (
               EIf
                 { cond = apply (embed e_p) (EVar e)
@@ -557,7 +557,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
         { gen = lazy (EVar tau)
         ; check = lazy (fresh_abstraction "t_singletype_check" @@ fun t -> 
             build @@
-            let%bind _ = ignore @@ check (EVar tau) (gen (EVar t)) in
+            let* _ = ignore @@ check (EVar tau) (gen (EVar t)) in
             return (check (EVar t) (gen (EVar tau)))
         )
         ; wrap = lazy eid
@@ -565,8 +565,8 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
 
   and embed_let_defn ?(do_wrap : bool = do_wrap) ~(do_check : bool) ~(tau : Desugared.t) (defn : Desugared.t) : Embedded.t =
     build @@
-    let%bind v = capture @@ embed defn in
-    let%bind () = 
+    let* v = capture @@ embed defn in
+    let* () = 
       if do_check
       then ignore @@ check tau (EVar v)
       else return ()

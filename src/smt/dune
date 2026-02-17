@@ -11,4 +11,4 @@
  (synopsis "SMT module for the Jaylang project")
  (inline_tests)
  (instrumentation (backend landmarks --auto))
- (preprocess (pps ppx_compare ocaml-monadic)))
+ (preprocess (pps ppx_compare)))

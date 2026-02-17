@@ -87,8 +87,9 @@ let of_bjy_file (bjy_filename : Filename.t) : t =
   let file_content = In_channel.read_all bjy_filename in (* may consider reading only a short portion to make this faster *)
   let s_opt =
     let open Option.Let_syntax in
-    let%bind i0 = String.substr_index file_content ~pattern:"(***" in
-    let%bind i1 = String.substr_index file_content ~pos:i0 ~pattern:"*)" in
+    let (let*) x f = Option.bind x ~f in
+    let* i0 = String.substr_index file_content ~pattern:"(***" in
+    let* i1 = String.substr_index file_content ~pos:i0 ~pattern:"*)" in
     return (String.slice file_content (i0 + 4) i1)
   in
   Option.value s_opt ~default:"()"

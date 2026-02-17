@@ -12,6 +12,7 @@ module Lwt : S with type 'a m = 'a Lwt.t = struct
   type 'a m = 'a t
   let with_timeout = Lwt_unix.with_timeout
   let run = Lwt_main.run
+  let ( let* ) = Lwt.Syntax.( let* )
 end
 
 module Id : S with type 'a m = 'a = struct

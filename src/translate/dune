@@ -6,5 +6,4 @@
  (private_modules desugar embed translation_tools type_erasure)
  (libraries core cmdliner utils lang preface)
  (instrumentation (backend landmarks --auto))
- (preprocess (pps ocaml-monadic))
  )
