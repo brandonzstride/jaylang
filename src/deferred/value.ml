@@ -1,6 +1,4 @@
 
-open Core
-
 include Concolic.Deferred.Dvalue.Make (Utils.Identity)
 
 module Without_symbols = Lang.Value.Embedded (Utils.Identity)
@@ -23,8 +21,8 @@ let of_concolic (v : Concolic.Deferred.Value.whnf) (m : Concolic.Deferred.Value.
     | VBool (b, _) -> VBool b
     (* Homomorphic *)
     | VVariant { label ; payload } -> VVariant { label ; payload = subst payload }
-    | VRecord record_body -> VRecord (Map.map record_body ~f:subst)
-    | VModule module_body -> VModule (Map.map module_body ~f:subst)
+    | VRecord record_body -> VRecord (Lang.Ast.RecordLabel.Map.map subst record_body)
+    | VModule module_body -> VModule (Lang.Ast.RecordLabel.Map.map subst module_body)
     | VUntouchable v -> VUntouchable (subst v)
     (* Expressions FIXME : subst into env *)
     | VFunClosure { param ; closure = { env = _ ; body } } -> VFunClosure { param ; closure = { env = Without_symbols.Env.empty ; body } }

@@ -1,6 +1,4 @@
 
-open Core
-
 type 'key t = { get : 'a. ('a, 'key) Key.t -> 'a }[@@unboxed]
 
 let zero : 'key t =
@@ -21,7 +19,7 @@ let default : 'key t =
 
 let of_smt_model ?(fallback_feeder : 'k t = default) (model : 'k Smt.Model.t) ~(uid : 'k -> int) : 'k t =
   let get (type a) (key : (a, 'k) Key.t) : a =
-    let s : (a, 'k) Smt.Symbol.t = 
+    let s : (a, 'k) Smt.Symbol.t =
       match key with
       | I k -> Smt.Symbol.make_int k uid
       | B k -> Smt.Symbol.make_bool k uid
@@ -32,23 +30,24 @@ let of_smt_model ?(fallback_feeder : 'k t = default) (model : 'k Smt.Model.t) ~(
   in
   { get }
 
+module IntMap = Baby.W.Map.Make (Int)
+
 (*
   Feeds using index in the sequence
 *)
 let of_sequence (ls : Input.t list) : int t =
-  let mt = Int.Map.empty in
   let m_ints, m_bools, _ =
-    List.fold ls ~init:(mt, mt, 0) ~f:(fun (mi, mb, n) input ->
+    List.fold_left (fun (mi, mb, n) input ->
       match input with
-      | Input.I i -> (Map.set mi ~key:n ~data:i, mb, n + 1)
-      | Input.B b -> (mi, Map.set mb ~key:n ~data:b, n + 1)
-    )
+      | Input.I i -> (IntMap.add n i mi, mb, n + 1)
+      | Input.B b -> (mi, IntMap.add n b mb, n + 1)
+    ) (IntMap.empty, IntMap.empty, 0) ls
   in
   let get : type a. (a, int) Key.t -> a = fun key ->
     let a_opt : a option =
       match key with
-      | I k -> Map.find m_ints k
-      | B k -> Map.find m_bools k
+      | I k -> IntMap.find_opt k m_ints
+      | B k -> IntMap.find_opt k m_bools
     in
     Option.value a_opt ~default:(zero.get key)
   in

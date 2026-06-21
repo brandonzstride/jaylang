@@ -1,12 +1,10 @@
 
-open Core
-
 (*
   This is an alternative to the `Stat` module that describes
   a single statistic, like the time alone.
 *)
 
-type t = 
+type t =
   { interp_time  : Mtime.Span.t
   ; solve_time   : Mtime.Span.t
   ; total_time   : Mtime.Span.t
@@ -17,7 +15,7 @@ type t =
   ; error_depth  : int option
   }
 
-let create () = 
+let create () =
   { interp_time  = Mtime.Span.zero
   ; solve_time   = Mtime.Span.zero
   ; total_time   = Mtime.Span.zero
@@ -28,7 +26,10 @@ let create () =
   ; error_depth  = None
   }
 
-let sum_opts x y = Option.merge x y ~f:(+)
+let sum_opts x y =
+  Core.Option.merge ~f:(+) x y
+  (* Option.blend (+) x y *)
+  (* Option.blend since 5.5 *)
 
 let combine a b =
   { interp_time = Mtime.Span.add a.interp_time b.interp_time

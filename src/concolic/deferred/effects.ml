@@ -3,7 +3,6 @@
   Concolic effects for deferred interpreter, interlaced with regular deferred effects.
 *)
 
-open Core
 open Interp_common
 open Common
 
@@ -26,7 +25,7 @@ module State = struct
   type t =
     { time : Timestamp.t
     ; symbol_map : Value.Symbol_map.t
-    ; pending_proofs : Value.Pending_proofs.t 
+    ; pending_proofs : Value.Pending_proofs.t
     ; n_stern_steps : Step.t
     ; path : k Path.t
     ; inputs : Interpreter.Interp.Input_log.t }
@@ -35,7 +34,7 @@ module State = struct
     { time = Timestamp.initial
     ; symbol_map = Value.Symbol_map.empty
     ; pending_proofs = Value.Pending_proofs.empty
-    ; n_stern_steps = Step.zero 
+    ; n_stern_steps = Step.zero
     ; path = Path.empty
     ; inputs = [] }
 
@@ -48,8 +47,8 @@ module State = struct
     { s with n_stern_steps = Step.next s.n_stern_steps }
 
   let inputs ({ inputs ; _ } : t) : Interp_common.Input.t list =
-    List.sort inputs ~compare:(fun (_, t1) (_, t2) -> Interp_common.Timestamp.compare t1 t2)
-    |> List.map ~f:Tuple2.get1
+    List.sort (fun (_, t1) (_, t2) -> Interp_common.Timestamp.compare t1 t2) inputs
+    |> List.map fst
 end
 
 module Err = struct
@@ -96,30 +95,31 @@ include Interp_common.Effects.Make (State) (Utils.Builder.Unit_builder) (Value.E
 
   Maps the deferred proof for the given symbol and moves it from a pending proof into the symbol environment.
 *)
-let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb) (f : Lang.Ast.Embedded.t -> (Value.whnf, 'e) t) : (Value.whnf, 'e) t =
+let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb)
+    (f : Lang.Ast.Embedded.t -> (Value.whnf, 'e) t) : (Value.whnf, 'e) t =
   { run = fun ~reject ~accept state step () _ ->
     (* Get the deferred proof for the symbol from the current state. *)
-    match Value.Pending_proofs.pop symb state.pending_proofs with   
+    match Value.Pending_proofs.pop symb state.pending_proofs with
     | None -> failwith "Invariant failure: popping symbol that does not exist in the symbol map"
     | Some (closure, remaining_pending_proofs) ->
       (* When we go to work on a deferred proof, we only let it see the lesser symbols *)
       let to_keep, _, to_add_back = Time_map.split t remaining_pending_proofs in
       (* We will locally run with the time from the symbol and only the lesser pending proofs. *)
-      (f closure.body).run 
-        { state with time = t ; pending_proofs = to_keep } 
+      (f closure.body).run
+        { state with time = t ; pending_proofs = to_keep }
         step
         ()
         closure.env
         ~reject ~accept:(fun v final_state final_step () ->
           accept v { final_state with
             time = state.time (* Restore original time now that f is done. *)
-          ; pending_proofs = 
-            Time_map.union (fun _ _ _ -> failwith "Invariant failure: duplicate timestamp when adding back hidden symbols") 
+          ; pending_proofs =
+            Time_map.union (fun _ _ _ -> failwith "Invariant failure: duplicate timestamp when adding back hidden symbols")
               final_state.pending_proofs (* Keep all the proofs after f finished running ... *)
               to_add_back (* ... and put back the proofs we hid from f *)
           ; symbol_map = Time_map.add t v final_state.symbol_map
           } final_step ()
-        ) 
+        )
   }
 
 let incr_time : unit m =
@@ -150,7 +150,7 @@ let[@inline always] optionally_map_some_deferred_proof (f : Lang.Ast.Embedded.t 
   { run = fun ~reject ~accept state step () r ->
     if Step.to_int state.n_stern_steps land 31 = 0 (* quick way to check it is 0 mod 32 *)
     && not (Time_map.is_empty state.pending_proofs) (* ... and there is some pending proof we can work on *)
-    then 
+    then
       let (t, _) = Time_map.choose state.pending_proofs in
       (map_deferred_proof (VSymbol t) f).run ~reject ~accept:(fun _ final_state final_step () ->
         accept () final_state final_step ()
@@ -196,9 +196,9 @@ let[@inline always] defer (body : Lang.Ast.Embedded.t) : Value.t m =
   { run =
     fun ~reject:_ ~accept state step () env ->
       let symb = Value.VSymbol (Interp_common.Timestamp.push state.time) in
-      accept (Value.cast_up symb) { state with 
+      accept (Value.cast_up symb) { state with
         time = Interp_common.Timestamp.increment state.time
-      ; pending_proofs = Value.Pending_proofs.push symb { body ; env } state.pending_proofs 
+      ; pending_proofs = Value.Pending_proofs.push symb { body ; env } state.pending_proofs
       } step ()
   }
 
@@ -207,7 +207,7 @@ let get_input (type a) (make_key : Timestamp.t -> a Key.Timekey.t) (feeder : Tim
   let key = make_key state.time in
   let v = feeder.get key in
   match key with
-  | I k -> 
+  | I k ->
     let* () = modify (fun s -> { s with inputs = (I v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
     return @@ Value.symbolic_int v k
   | B k ->

@@ -19,22 +19,17 @@
  (name jay)
  (description "Semantic typing via program translation and symbolic execution")
  (depends
-  core
-  core_unix
   (alcotest :with-test)
-  menhir
-  lwt
-  landmarks
-  landmarks-ppx
-  alcotest
   baby
-  psq
-  preface
-  mtime
+  (cmdliner (>= 2.0))
+  menhir
   moonpool
+  mtime
+  (ppx_deriving (>= 3.2))
+  preface
+  psq
   vector
   z3
-  (ppx_deriving
-   (>= 3.2))))
+  ))
 
 

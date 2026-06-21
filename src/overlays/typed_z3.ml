@@ -1,5 +1,4 @@
 
-open Core
 open Smt
 
 module type CONTEXT = sig
@@ -84,20 +83,20 @@ module Make_of_context (C : CONTEXT) : Formula.SOLVABLE = struct
     | L_UNDEF -> failwith "Invariant failure: unboxing non-bool into bool."
 
   let a_of_expr z3_model expr unbox_expr =
-    let open Option.Let_syntax in
-    Z3.Model.get_const_interp_e z3_model expr
-    >>| unbox_expr
+    match Z3.Model.get_const_interp_e z3_model expr with
+    | Some e -> Some (unbox_expr e)
+    | None -> None
 
   let solve (exprs : (bool, 'k) t list) : 'k Solution.t =
     let e = and_ exprs in
     if Z3.Expr.equal e (const_bool false)
     then Unsat
-    else begin     
+    else begin
       Z3.Solver.push solver;
       let solution =
         match Z3.Solver.check solver [ e ] with
         | Z3.Solver.SATISFIABLE ->
-          let model = Option.value_exn @@ Z3.Solver.get_model solver in
+          let model = Option.get @@ Z3.Solver.get_model solver in
           let value : type a. (a, 'k) Symbol.t -> a option = fun s ->
             match s with
             | I _ -> a_of_expr model (symbol s) unbox_int_expr

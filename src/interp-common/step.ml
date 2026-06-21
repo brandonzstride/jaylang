@@ -1,8 +1,9 @@
 
-open Core
-
 module T = struct
-  type t = Step of int [@@unboxed] [@@deriving compare, equal, sexp]
+  type t = Step of int [@@unboxed]
+
+  let equal (Step a) (Step b) = a = b
+  let compare (Step a) (Step b) = Int.compare a b
 
   let zero = Step 0
 

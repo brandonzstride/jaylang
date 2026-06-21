@@ -1,5 +1,4 @@
 
-open Core
 open Lang
 open Ast
 
@@ -11,7 +10,7 @@ module Fresh_names = struct
 
   module Make () : S = struct
     (* suffixes are strictly for readability of target code *)
-    let fresh_id : ?suffix : string -> unit -> Ident.t = 
+    let fresh_id : ?suffix : string -> unit -> Ident.t =
       let count = Utils.Counter.create () in
       fun ?(suffix : string = "") () ->
         let c = Utils.Counter.next count in
@@ -25,11 +24,11 @@ end
 
 module Let_builder (L : sig
   type a
-  type t 
+  type t
   val t_to_expr : t -> body:a Expr.t -> a Expr.t
 end) = struct
   module T = struct
-    (* 
+    (*
       This transforms the identity monad to a writer, where the
       operation to write is list concatenation.
     *)
@@ -44,15 +43,14 @@ end) = struct
   include T
 
   let iter (ls : 'a list) ~(f : 'a -> unit m) : unit m =
-    List.fold ls ~init:(return ()) ~f:(fun acc_m a ->
-      let* () = acc_m in
-      f a
-    )
+    List.fold_left (fun acc_m a ->
+      let* () = acc_m in f a
+    ) (return ()) ls
 
   let build (m : L.a Expr.t m) : L.a Expr.t =
     let body, resulting_bindings = run_identity m in
     (* we must fold right because of the ordering of Preface.List.Monoid.combine and how it is added to the tape *)
-    List.fold_right resulting_bindings ~init:body ~f:(fun tape body -> L.t_to_expr tape ~body)
+    List.fold_right (fun tape body -> L.t_to_expr tape ~body) resulting_bindings body
 end
 
 open Ast_tools
@@ -60,7 +58,7 @@ open Ast_tools
 module Desugared_functions = struct
   (*
     let filter_list x =
-      match x with 
+      match x with
       | `Nil _ -> x
       | `Cons _ -> x
       end
@@ -88,7 +86,7 @@ module Desugared_functions = struct
         (fun s -> fun x -> f (s s) x)
         (fun s -> fun x -> f (s s) x)
   *)
-  let y_1 = 
+  let y_1 =
     let open Ident in
     let open Expr in
     let open Ast_tools.Utils in
@@ -132,23 +130,23 @@ module Desugared_functions = struct
       let self = Ident "~self_yn" in
       let x = Ident "~x_yn" in
       let r = Ident "~r_yn" in
-      let e_ids = List.map ids ~f:(fun id -> EVar id) in
-      let labels = List.map ids ~f:(fun id -> RecordLabel.RecordLabel id) in
-      let projections = List.map labels ~f:(fun label -> proj (EVar r) label) in
+      let e_ids = List.map (fun id -> EVar id) ids in
+      let labels = List.map (fun id -> RecordLabel.RecordLabel id) ids in
+      let projections = List.map (fun label -> proj (EVar r) label) labels in
       abstract_over_ids ids (
         appl_list (
           apply y_1 @@
             abstract_over_ids (self :: ids) @@
-              ERecord (Ast.RecordLabel.Map.of_alist_exn @@
+              ERecord (Ast.RecordLabel.Map.of_list @@
                 let bodies =
-                  List.map ids ~f:(fun f ->
+                  List.map (fun f ->
                     abstract_over_ids [ x ] @@
                       ELet { var = r ; defn = appl_list (EVar self) e_ids ; body =
                         apply (appl_list (EVar f) projections) (EVar x)
                       }
-                  )
+                  ) ids
                 in
-                List.zip_exn labels bodies
+                List.combine labels bodies
               )
         ) e_ids
       )
@@ -157,12 +155,12 @@ end
 
 module Embedded_functions = struct
   (*
-    Y-combinator for Mu types: 
+    Y-combinator for Mu types:
 
       fun f ->
         (fun x -> freeze (thaw (f (x x))))
         (fun x -> freeze (thaw (f (x x))))
-    
+
     Notes:
     * f is a function, so it has be captured with a closure, so there is nothing
       wrong about using any names here. However, I use tildes to be safe and make
@@ -192,7 +190,7 @@ module Embedded_functions = struct
         (fun s -> fun x -> f (s s) x)
         (fun s -> fun x -> f (s s) x)
   *)
-  let y_1 = 
+  let y_1 =
     let open Ident in
     let open Expr in
     let open Ast_tools.Utils in
@@ -205,4 +203,4 @@ module Embedded_functions = struct
     in
     abstract_over_ids [ f ] @@
       apply body body
-end 
+end

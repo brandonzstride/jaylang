@@ -4,6 +4,7 @@
  (name utils)
  (public_name jay.utils)
  (libraries
+  cmdliner
   core
   core_unix
   core_unix.sys_unix

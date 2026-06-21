@@ -1,5 +1,4 @@
 
-open Core
 open Interp_common
 open Common
 
@@ -53,7 +52,7 @@ let get_input (type a) (make_key : Step.t -> a Feeder.Key.t) (feeder : Step.t In
   let key = make_key s in
   let v = feeder.get key in
   match key with
-  | I k -> 
+  | I k ->
     let* () = modify (fun s -> { s with rev_inputs = I v :: s.rev_inputs }) in
     return @@ Value.M.VInt (v, Smt.Formula.symbol (Step_symbol.make_int k))
   | B k ->

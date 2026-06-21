@@ -1,5 +1,4 @@
 
-open Core
 open Lang.Ast
 
 (*
@@ -80,16 +79,19 @@ module Make (V : Utils.Equatable.P1) = struct
     | Pattern.PUntouchable id, VUntouchable v -> `Matches_with (v, id)
     | _, VUntouchable _ -> `No_match
     | PAny, _
-    | PInt, VInt _ 
+    | PInt, VInt _
     | PBool, VBool _
     | PUnit, VUnit
     | PRecord, VRecord _ (* Currently, types match this *)
     | PModule, VModule _
     | PFun, VFunClosure _ -> `Matches
     | PType, VRecord m ->
-      if List.for_all Lang.Ast_tools.Reserved.[ gen ; check ; wrap ] ~f:(Map.mem m)
-      then `Matches
-      else `No_match
+      let has_type_labels =
+        List.for_all (fun l ->
+          RecordLabel.Map.mem l m
+        ) Lang.Ast_tools.Reserved.[ gen ; check ; wrap ]
+      in
+      if has_type_labels then `Matches else `No_match
     | PVariable id, v -> `Matches_with (cast_up v, id)
     | PVariant { variant_label ; payload_id }, VVariant { label ; payload }
         when VariantLabel.equal variant_label label ->
@@ -109,9 +111,9 @@ module Make (V : Utils.Equatable.P1) = struct
     | VFunClosure { param = Ident s ; _ } -> Format.sprintf "(fun %s -> <expr>)" s
     | VVariant { label ; payload } -> Format.sprintf "(`%s (%s))" (VariantLabel.to_string label) (to_string payload)
     | VRecord record_body -> RecordLabel.record_body_to_string ~sep:"=" record_body to_string
-    | VModule module_body -> 
-      Format.sprintf "struct %s end" 
-      (String.concat ~sep:" " @@ List.map (Map.to_alist module_body) ~f:(fun (key, data) -> Format.sprintf "let %s = %s" (RecordLabel.to_string key) (to_string data)))
+    | VModule module_body ->
+      Format.sprintf "struct %s end"
+      (String.concat " " @@ List.map (fun (key, data) -> Format.sprintf "let %s = %s" (RecordLabel.to_string key) (to_string data)) (RecordLabel.Map.to_list module_body))
     | VUntouchable v -> Format.sprintf "Untouchable (%s)" (to_string v)
     | VSymbol t -> Format.sprintf "T%s" (Interp_common.Timestamp.to_string t)
 
@@ -128,7 +130,7 @@ module Make (V : Utils.Equatable.P1) = struct
     let pattern_not_found patterns v =
       Format.sprintf "Value `%s` not in pattern list [ %s ]"
         (to_string v)
-        (String.concat ~sep:", " @@ List.map patterns ~f:(fun (p, _) -> Pattern.to_string p))
+        (String.concat ", " @@ List.map (fun (p, _) -> Pattern.to_string p) patterns)
 
     let bad_appl vfunc =
       Format.sprintf "Apply to non-function %s" (to_string vfunc)
@@ -142,10 +144,10 @@ module Make (V : Utils.Equatable.P1) = struct
     let bad_not v =
       Format.sprintf "Bad unary operation `not %s`" (to_string v)
 
-    let cond_non_bool v = 
+    let cond_non_bool v =
       Format.sprintf "Condition on non-bool `%s`" (to_string v)
 
-    let case_non_int v = 
+    let case_non_int v =
       Format.sprintf "Case on non-int `%s`" (to_string v)
 
     let appl_non_table v =
@@ -162,16 +164,15 @@ module Make (V : Utils.Equatable.P1) = struct
       Time_map.add t work m
 
     let pop (VSymbol t : symb) (m : t) : (closure * t) option =
-      Option.map (Time_map.find_opt t m) ~f:(fun closure ->
+      Option.map (fun closure ->
         closure, Time_map.remove t m
-      )
+      ) (Time_map.find_opt t m)
 
     (*
       Cuts off all symbols at least as big as [t].
     *)
     let cut (VSymbol t : symb) (m : t) : t =
-      Tuple3.get1
-      @@ Time_map.split t m
+      let (l, _, _) = Time_map.split t m in l
   end
 
   module Symbol_map = struct
@@ -183,7 +184,6 @@ module Make (V : Utils.Equatable.P1) = struct
       Cuts off all symbols at least as big as [t].
     *)
     let cut (VSymbol t : symb) (m : t) : t =
-      Tuple3.get1
-      @@ Time_map.split t m
+      let (l, _, _) = Time_map.split t m in l
   end
 end

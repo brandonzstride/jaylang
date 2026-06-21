@@ -1,5 +1,4 @@
 
-open Core
 open Moonpool
 
 module type Computation = sig
@@ -14,23 +13,22 @@ module type Computation = sig
     val run : t -> Compute_result.t
   end
 
-  val timeout_sec : float
+  val timeout : Mtime.span
 end
 
 module Process (C : Computation) = struct
   let process_all (ls : C.Work.t Preface.Nonempty_list.t) =
-    let t0 = Caml_unix.gettimeofday () in
+    let timer = Mtime_clock.counter () in
     (* We create one thread per work item, but it may be recommended to do fewer if this number is huge *)
     let pool = Ws_pool.create ~num_threads:(Preface.Nonempty_list.length ls) () in
-    let futures = 
-      ls
-      |> Preface.Nonempty_list.to_list
-      |> List.map ~f:(fun item ->
+    let futures =
+      Preface.Nonempty_list.to_list ls
+      |> List.map (fun item ->
         Fut.spawn ~on:pool (fun () -> C.Work.run item)
       )
     in
     let rec go acc unfinished futures =
-      if Float.(Caml_unix.gettimeofday () - t0 > C.timeout_sec)
+      if Mtime.Span.is_longer (Mtime_clock.count timer) ~than:C.timeout
       then C.Compute_result.timeout_res
       else
         match futures with

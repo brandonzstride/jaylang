@@ -1,6 +1,4 @@
 
-open Core
-
 module type KEY = sig
   type t
   val uid : t -> int

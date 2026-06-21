@@ -4,9 +4,6 @@
  (name concolic)
  (public_name jay.concolic)
  (libraries
-  core
-  lwt
-  lwt.unix
   translate
   interpreter
   cmdliner

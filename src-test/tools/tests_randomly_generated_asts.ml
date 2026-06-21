@@ -202,7 +202,7 @@ let rand_EIf : 'a expr_gen = fun ~ctx ->
 
 let rand_ELet : 'a expr_gen = fun ~ctx ->
   ELet { var = pick_ident ~ctx ();
-         defn = pick_expr ~ctx; 
+         defn = pick_expr ~ctx;
          body = pick_expr ~ctx }
 
 let rand_EAppl : 'a expr_gen = fun ~ctx ->
@@ -225,12 +225,8 @@ let rand_EProject : 'a expr_gen = fun ~ctx ->
 
 let rand_ERecord : 'a expr_gen = fun ~ctx ->
   ERecord(
-    let rec loop () =
-      match RecordLabel.Map.of_alist @@ pick_list ~ctx
-          (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx)) with
-      | `Ok m -> m
-      | `Duplicate_key _ -> loop ()
-    in loop ()
+    RecordLabel.Map.of_list @@ pick_list ~ctx
+        (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx))
   )
 
 let rand_EModule : 'a expr_gen = fun ~ctx ->
@@ -297,12 +293,8 @@ let rand_ETypeUnit : 'a expr_gen = fun ~ctx ->
 
 let rand_ETypeRecord : 'a expr_gen = fun ~ctx ->
   ETypeRecord(
-    let rec loop () =
-      match RecordLabel.Map.of_alist @@ pick_list ~ctx
-          (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx)) with
-      | `Ok m -> m
-      | `Duplicate_key _ -> loop ()
-    in loop ()
+    RecordLabel.Map.of_list @@ pick_list ~ctx
+        (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx))
   )
 
 let rand_ETypeModule : 'a expr_gen = fun ~ctx ->
@@ -383,7 +375,7 @@ let rand_SUntyped : 'a statement_gen = fun ~ctx ->
 let rand_STyped : 'a typed_binding_opts_gen -> 'a statement_gen =
   fun typed_binding_opts_gen ~ctx ->
   STyped { typed_var = pick_typed_var ~ctx;
-           defn = pick_expr ~ctx; 
+           defn = pick_expr ~ctx;
            typed_binding_opts = typed_binding_opts_gen ~ctx
          }
 

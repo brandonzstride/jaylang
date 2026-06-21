@@ -2,7 +2,7 @@
 (executable
  (name interp)
  (modules interp)
- (libraries core interpreter lang translate)
+ (libraries interpreter lang translate)
  (promote
   (until-clean)
   (into "../..")))
@@ -10,7 +10,7 @@
 (executable
  (name ceval)
  (modules ceval)
- (libraries core cmdliner lang concolic)
+ (libraries cmdliner lang concolic)
  (promote
   (until-clean)
   (into "../..")))
@@ -18,7 +18,7 @@
 (executable
  (name deval)
  (modules deval)
- (libraries core cmdliner lang deferred translate)
+ (libraries cmdliner lang deferred translate)
  (promote
   (until-clean)
   (into "../..")))
@@ -26,7 +26,7 @@
 (executable
  (name cdeval)
  (modules cdeval)
- (libraries core cmdliner lang concolic)
+ (libraries cmdliner lang concolic)
  (promote
   (until-clean)
   (into "../..")))
@@ -34,7 +34,7 @@
 (executable
  (name bjy_cloc)
  (modules bjy_cloc)
- (libraries utils core core_unix.sys_unix)
+ (libraries core utils)
  (promote
   (until-clean)
   (into "../..")))

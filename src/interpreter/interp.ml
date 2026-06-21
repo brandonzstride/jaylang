@@ -6,7 +6,6 @@
    for all languages in one function.
 *)
 
-open Core
 open Lang.Ast
 open Lang.Ast.Expr
 open Lang.Ast_tools.Exceptions
@@ -22,24 +21,23 @@ module Input_log = struct
   end)
 
   let to_sequence : t -> Interp_common.Input.t list = fun t ->
-    List.map t ~f:Tuple2.get1
-    |> List.rev
+    List.rev_map fst t
 
   let to_time_feeder : t -> Interp_common.Timestamp.t Feeder.t =
     fun t ->
-    let mt = Map.empty (module Interp_common.Timestamp) in
+    let module Map = Interp_common.Timestamp.Map in
     let m_ints, m_bools =
-      List.fold t ~init:(mt, mt) ~f:(fun (mi, mb) (input, t) ->
+      List.fold_left (fun (mi, mb) (input, t) ->
           match input with
-          | Interp_common.Input.I i -> (Map.set mi ~key:t ~data:i, mb)
-          | Interp_common.Input.B b -> (mi, Map.set mb ~key:t ~data:b)
-        )
+          | Interp_common.Input.I i -> (Map.add t i mi, mb)
+          | Interp_common.Input.B b -> (mi, Map.add t b mb)
+        ) (Map.empty, Map.empty) t
     in
     let get : type a. a Interp_common.Key.Timekey.t -> a = fun key ->
       let a_opt : a option =
         match key with
-        | I k -> Map.find m_ints k
-        | B k -> Map.find m_bools k
+        | I k -> Map.find_opt k m_ints
+        | B k -> Map.find_opt k m_bools
       in
       Option.value a_opt ~default:(Interp_common.Input_feeder.zero.get key)
     in
@@ -57,7 +55,7 @@ module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
       ; n_inputs = 0 }
   end
 
-  let max_step : Interp_common.Step.t = Step Int.(10 ** 6)
+  let max_step : Interp_common.Step.t = Step (1 lsl 20) (* about a million steps *)
 
   module Err = struct
     (* Not putting state in the error because it's returned anyways *)
@@ -94,11 +92,11 @@ module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
     fail @@ `XUnbound_variable (id, ())
 
   let list_map (f : 'a -> 'b m) (ls : 'a list) : 'b list m =
-    List.fold_right ls ~init:(return []) ~f:(fun a acc_m ->
-        let* acc = acc_m in
-        let* b = f a in
-        return (b :: acc)
-      )
+    List.fold_right (fun a acc_m ->
+      let* acc = acc_m in
+      let* b = f a in
+      return (b :: acc)
+    ) ls (return [])
 
   let using_env (f : Env.t -> 'a) : 'a m =
     let* env = read_env in
@@ -156,17 +154,17 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     | EType -> return VType
     | EAbort msg -> abort msg
     | EVanish () -> vanish ()
-    | EFunction { param ; body } -> 
+    | EFunction { param ; body } ->
       using_env @@ fun env ->
       VFunClosure { param ; closure = { body ; env = lazy env } }
-    | EMultiArgFunction { params ; body } -> 
+    | EMultiArgFunction { params ; body } ->
       using_env @@ fun env ->
       VMultiArgFunClosure { params ; closure = { body ; env = lazy env } }
     (* inputs *)
-    | EInput | EPick_i -> 
+    | EInput | EPick_i ->
       let* i = get_input Interp_common.Key.Indexkey.int_ (fun i -> Interp_common.Input.I i) feeder in
       return (VInt i)
-    | EPick_b -> 
+    | EPick_b ->
       let* b = get_input Interp_common.Key.Indexkey.bool_ (fun b -> Interp_common.Input.B b) feeder in
       return (VBool b)
     | EAbstractType ->
@@ -227,7 +225,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       return (VTypeRecord new_record)
     | ETypeModule e_ls ->
       using_env @@ fun env ->
-      VTypeModule (List.map e_ls ~f:(fun (label, tau) -> label, { body = tau ; env = lazy env } ))
+      VTypeModule (List.map (fun (label, tau) -> label, { body = tau ; env = lazy env }) e_ls)
     | EGen e ->
       let* _ : a V.t = eval e in
       return VAbort
@@ -261,7 +259,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         Env.add var (VTypeMu { var ; params ; closure = { body ; env = rec_env } }) env
       )
       in
-      local (fun _ -> force rec_env) (eval (Lang.Ast_tools.Utils.abstract_over_ids params (EVar var)))
+      local (fun _ -> Lazy.force rec_env) (eval (Lang.Ast_tools.Utils.abstract_over_ids params (EVar var)))
     (* operations *)
     | EListCons (e_hd, e_tl) -> begin
         let* hd = eval e_hd in
@@ -278,11 +276,11 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         | BMinus, VInt n1, VInt n2                -> return (VInt (n1 - n2))
         | BTimes, VInt n1, VInt n2                -> return (VInt (n1 * n2))
         | BDivide, VInt n1, VInt n2 when n2 <> 0  -> return (VInt (n1 / n2))
-        | BModulus, VInt n1, VInt n2 when n2 <> 0 -> return (VInt (n1 % n2))
+        | BModulus, VInt n1, VInt n2 when n2 <> 0 -> return (VInt (n1 mod n2))
         | BEqual, VInt n1, VInt n2                -> return (VBool (n1 = n2))
-        | BEqual, VBool b1, VBool b2              -> return (VBool Bool.(b1 = b2))
+        | BEqual, VBool b1, VBool b2              -> return (VBool (b1 = b2))
         | BNeq, VInt n1, VInt n2                  -> return (VBool (n1 <> n2))
-        | BNeq, VBool b1, VBool b2                -> return (VBool Bool.(b1 <> b2))
+        | BNeq, VBool b1, VBool b2                -> return (VBool (b1 <> b2))
         | BLessThan, VInt n1, VInt n2             -> return (VBool (n1 < n2))
         | BLeq, VInt n1, VInt n2                  -> return (VBool (n1 <= n2))
         | BGreaterThan, VInt n1, VInt n2          -> return (VBool (n1 > n2))
@@ -311,7 +309,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       let* r = eval record in
       begin match r with
       | VRecord body | VModule body ->
-        begin match Map.find body label with
+        begin match RecordLabel.Map.find_opt label body with
         | Some v -> return v
         | _ -> type_mismatch ()
         end
@@ -333,16 +331,16 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       | _ -> type_mismatch ()
       end
     (* casing *)
-    | EMatch { subject ; patterns } -> 
+    | EMatch { subject ; patterns } ->
       let* v = eval subject in
-      let match_opt = 
-        List.find_map patterns ~f:(fun (pat, body) ->
-            match V.matches v pat with
-            | Some bindings -> Some (body, fun env ->
-                List.fold bindings ~init:env ~f:(fun acc (v_bind, id_bind) -> Env.add id_bind v_bind acc)
-              )
-            | None -> None
-          )
+      let match_opt =
+        List.find_map (fun (pat, body) ->
+          match V.matches v pat with
+          | Some bindings -> Some (body, fun env ->
+              List.fold_left (fun acc (v_bind, id_bind) -> Env.add id_bind v_bind acc) env bindings
+            )
+          | None -> None
+        ) patterns
       in
       begin match match_opt with
       | Some (e, f) -> local f (eval e)
@@ -354,9 +352,9 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       | VInt i ->
         let* () = incr_time in
         let case_opt =
-          List.find_map cases ~f:(fun (case_i, body) ->
-              Option.some_if (i = case_i) body
-            )
+          List.find_map (fun (case_i, body) ->
+            if i = case_i then Some body else None
+          ) cases
         in
         begin match case_opt with
         | Some body -> eval body
@@ -368,16 +366,16 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     | ELetFunRec { funcs ; body } -> begin
         let* env = read_env in
         let rec rec_env = lazy (
-          List.fold funcs ~init:env ~f:(fun acc fsig ->
-              let comps = Lang.Ast_tools.Funsig.to_components fsig in
-              match Lang.Ast_tools.Utils.abstract_over_ids comps.params comps.defn with
-              | EFunction { param ; body } -> 
-                Env.add comps.func_id (VFunClosure { param ; closure = { body ; env = rec_env } }) acc
-              | _ -> raise @@ InvariantFailure "Logically impossible abstraction from funsig without parameters"
-            )
+          List.fold_left (fun acc fsig ->
+            let comps = Lang.Ast_tools.Funsig.to_components fsig in
+            match Lang.Ast_tools.Utils.abstract_over_ids comps.params comps.defn with
+            | EFunction { param ; body } ->
+              Env.add comps.func_id (VFunClosure { param ; closure = { body ; env = rec_env } }) acc
+            | _ -> raise @@ InvariantFailure "Logically impossible abstraction from funsig without parameters"
+          ) env funcs
         )
         in
-        local (fun _ -> force rec_env) (eval body)
+        local (fun _ -> Lazy.force rec_env) (eval body)
       end
     | ELetFun { func ; body = body' } -> begin
         let comps = Lang.Ast_tools.Funsig.to_components func in
@@ -395,11 +393,11 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     local (Env.add var v) (eval body)
 
   and eval_record_body (record_body : a Expr.t RecordLabel.Map.t) : a V.t RecordLabel.Map.t m =
-    Map.fold record_body ~init:(return RecordLabel.Map.empty) ~f:(fun ~key ~data:e acc_m ->
+    RecordLabel.Map.fold (fun key e acc_m ->
         let* acc = acc_m in
         let* v = eval e in
-        return (Map.set acc ~key ~data:v)
-      )
+        return (RecordLabel.Map.add key v acc)
+      ) record_body (return RecordLabel.Map.empty)
 
   (* evaluates statement list to a module. This is a total pain for rec funs *)
   and eval_stmt_list (stmts : a Expr.statement list) : a V.t m =
@@ -410,13 +408,13 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
           let* acc = acc_m in
           let* v = eval defn in
           local (Env.add var v) (
-            fold_stmts (return (Map.set acc ~key:(RecordLabel.RecordLabel var) ~data:v)) tl
+            fold_stmts (return (RecordLabel.Map.add (RecordLabel.RecordLabel var) v acc)) tl
           )
         | STyped { typed_var = { var ; _ } ; defn ; _ } :: tl ->
           let* acc = acc_m in
           let* v = eval defn in
           local (Env.add var v) (
-            fold_stmts (return (Map.set acc ~key:(RecordLabel.RecordLabel var) ~data:v)) tl
+            fold_stmts (return (RecordLabel.Map.add (RecordLabel.RecordLabel var) v acc)) tl
           )
         | SFun fsig :: tl -> begin
             let* acc = acc_m in
@@ -426,32 +424,36 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
               let* env = read_env in
               let v = VFunClosure { param ; closure = { body ; env = lazy env } } in
               local (Env.add comps.func_id v) (
-                fold_stmts (return (Map.set acc ~key:(RecordLabel.RecordLabel comps.func_id) ~data:v)) tl
+                fold_stmts (return (RecordLabel.Map.add (RecordLabel.RecordLabel comps.func_id) v acc)) tl
               )
             | _ -> raise @@ InvariantFailure "Logically impossible abstraction from funsig without parameters"
           end
         | SFunRec fsigs :: tl ->
           let* acc = acc_m in
-          let func_comps = List.map fsigs ~f:Lang.Ast_tools.Funsig.to_components in
+          let func_comps = List.map Lang.Ast_tools.Funsig.to_components fsigs in
           let* env = read_env in
           let rec rec_env = lazy (
-            List.fold func_comps ~init:env ~f:(fun acc comps ->
-                match Lang.Ast_tools.Utils.abstract_over_ids comps.params comps.defn with
-                | EFunction { param ; body } -> 
+              List.fold_left (fun acc comps ->
+                let params = comps.Lang.Ast_tools.Function_components.params in
+                match Lang.Ast_tools.Utils.abstract_over_ids params comps.defn with
+                | EFunction { param ; body } ->
                   let v = VFunClosure { param ; closure = { body ; env = rec_env } } in
                   Env.add comps.func_id v acc
                 | _ -> raise @@ InvariantFailure "Logically impossible abstraction from funsig without parameters"
-              )
-          ) in
-          let m =
-            List.fold func_comps ~init:acc ~f:(fun acc comps ->
-                Map.set acc ~key:(RecordLabel comps.func_id) ~data:(Obj.magic @@ (* FIXME *)
-                                                                    Env.fetch comps.func_id (force rec_env)
-                                                                    |> Option.value_exn
-                                                                   )
-              )
+              ) env func_comps
+            )
           in
-          local (fun _ -> force rec_env) (fold_stmts (return m) tl )
+          let m =
+            List.fold_left (fun acc comps ->
+                RecordLabel.Map.add
+                  (RecordLabel comps.Lang.Ast_tools.Function_components.func_id)
+                  (Obj.magic @@ (* FIXME *)
+                    Env.fetch comps.func_id (Lazy.force rec_env)
+                    |> Option.get
+                  ) acc
+              ) acc func_comps
+          in
+          local (fun _ -> Lazy.force rec_env) (fold_stmts (return m) tl )
       in
       fold_stmts (return RecordLabel.Map.empty) stmts
     in
@@ -469,19 +471,18 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
    | Error `XReach_max_step () -> Format.printf "REACHED MAX STEP\n"; VVanish
   ), timed_inputs
 
-let eval_pgm 
+let eval_pgm
     (type a)
     ?(feeder : int Feeder.t = Interp_common.Input_feeder.zero)
-    (pgm : a Program.t) 
+    (pgm : a Program.t)
   : a V.t
   =
-  Tuple2.get1
-  @@ eval_exp (EModule pgm) feeder
+  fst (eval_exp (EModule pgm) feeder)
 
 let eval_pgm_to_time_feeder
     (type a)
     ?(feeder : int Feeder.t = Interp_common.Input_feeder.zero)
-    (pgm : a Program.t) 
+    (pgm : a Program.t)
   : a V.t * Interp_common.Timestamp.t Feeder.t
   =
   let v, log = eval_exp (EModule pgm) feeder in

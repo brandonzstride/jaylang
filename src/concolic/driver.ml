@@ -1,5 +1,4 @@
 
-open Core
 open Common
 
 module type S = sig
@@ -16,7 +15,7 @@ module type S = sig
       options:Options.t ->
       do_wrap:bool ->
       do_type_splay:Translate.Splay.t ->
-      Core.Filename.t ->
+      string ->
       Status.Terminal.t * tape
 
     val eval : Status.Terminal.t Cmdliner.Cmd.t
@@ -48,19 +47,17 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
       options:Options.t ->
       do_wrap:bool ->
       do_type_splay:Translate.Splay.t ->
-      Core.Filename.t ->
+      string ->
       Status.Terminal.t * tape
 
     val eval : Status.Terminal.t Cmdliner.Cmd.t
   end
 
-  module Make (Key : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) 
+  module Make (Key : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE)
     (C : Evaluator.EVAL with type k := Key.t) () : DRIVER = struct
 
-    module Lwt_log = T.Transform (Pause.Lwt)
     module Log = T.Transform (Pause.Id)
 
-    module Lwt_eval = Evaluator.Make (Key) (Make_tq) (Pause.Lwt) (Lwt_log)
     module Eval = Evaluator.Make (Key) (Make_tq) (Pause.Id) (Log)
 
     module Default_Z3 = Overlays.Typed_z3.Make ()
@@ -69,17 +66,16 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
 
     (*
       ----------------------
-      TESTING BY EXPRESSIONS   
+      TESTING BY EXPRESSIONS
       ----------------------
     *)
 
-    (* runs [lwt_eval] and catches lwt timeout *)
-    let test_with_timeout 
+    let test_with_timeout
       : options:Options.t -> Lang.Ast.Embedded.t -> Status.Terminal.t * tape
       = fun ~options prog ->
-      let main = Lwt_eval.c_loop ~options C.ceval Default_solver.solve prog in
-      try Lwt_main.run @@ Lwt_log.run main with
-      | Lwt_unix.Timeout -> Status.Timeout, T.B.empty (* FIXME: timeout doesn't provide stats *)
+      let main = Eval.c_loop ~options C.ceval Default_solver.solve prog in
+      try Log.run main with
+      | _ -> Status.Timeout, T.B.empty (* FIXME: timeout doesn't provide stats *)
 
     module Compute (O : sig val options : Options.t end) = struct
       module Compute_result = struct
@@ -103,7 +99,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
             | Exhausted_full_tree, Exhausted_full_tree -> Exhausted_full_tree
         end)
 
-        let is_signal_to_quit : t -> bool = 
+        let is_signal_to_quit : t -> bool =
           (* TOOD: this is hideous, but I don't see a way around it right now *)
           fun sm -> let s, _tape = run sm in Status.is_error_found s
 
@@ -120,7 +116,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
           Eval.c_loop ~options:O.options C.ceval S.solve expr
       end
 
-      let timeout_sec = O.options.global_timeout_sec
+      let timeout = O.options.global_timeout
     end
 
     (*
@@ -140,7 +136,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
       then
         let pgms = Translate.Convert.some_program_to_many_emb program ~do_wrap ~do_type_splay in
         match pgms with
-        | Last pgm -> 
+        | Last pgm ->
           (* Nothing to do in parallel if only one program *)
           test_with_timeout ~options @@ Lang.Ast_tools.Utils.pgm_to_module pgm
         | _ ->
@@ -159,7 +155,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
       Lang.Ast.some_program ->
       Status.Terminal.t * tape =
       fun ~options ~do_wrap ~do_type_splay program ->
-      let status, tape = 
+      let status, tape =
         match do_type_splay with
         | No -> test_without_printing ~options ~do_wrap ~do_type_splay program
         | Yes_with_depth max_depth ->
@@ -185,14 +181,14 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
     *)
 
     let test_some_file :
-      options:Options.t -> do_wrap:bool -> do_type_splay:Translate.Splay.t -> Filename.t ->
+      options:Options.t -> do_wrap:bool -> do_type_splay:Translate.Splay.t -> string ->
       Status.Terminal.t * tape =
-      fun ~options ~do_wrap ~do_type_splay filename ->
+      fun ~options ~do_wrap ~do_type_splay file ->
       test_some_program
         ~options
         ~do_wrap
         ~do_type_splay
-        (Lang.Parser.parse_program_from_file filename)
+        (Lang.Parser.parse_program_from_file file)
 
     (*
       ------------------------------

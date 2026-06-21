@@ -9,7 +9,6 @@
   methods to extract the function components from a function signature.
 *)
 
-open Core
 open Ast
 
 module Exceptions = struct
@@ -33,15 +32,15 @@ module Reserved = struct
   let nonce : RecordLabel.t = RecordLabel (Ident "~nonce")
 
   (* Variant constructors *)
-  let cons : VariantLabel.t = VariantLabel (Ident "~Cons") 
-  let nil : VariantLabel.t = VariantLabel (Ident "~Nil") 
+  let cons : VariantLabel.t = VariantLabel (Ident "~Cons")
+  let nil : VariantLabel.t = VariantLabel (Ident "~Nil")
   let top : VariantLabel.t = VariantLabel (Ident "~Top")
   (* let stub : VariantLabel.t = VariantLabel (Ident "~Stub") *)
   let stub : VariantLabel.t = VariantLabel (Ident "Stub") (* FIXME: add a tilde *)
 
   (* Variant type constructors *)
-  let cons_type : VariantTypeLabel.t = VariantTypeLabel (Ident "~Cons") 
-  let nil_type : VariantTypeLabel.t = VariantTypeLabel (Ident "~Nil") 
+  let cons_type : VariantTypeLabel.t = VariantTypeLabel (Ident "~Cons")
+  let nil_type : VariantTypeLabel.t = VariantTypeLabel (Ident "~Nil")
   (* let stub_type : VariantTypeLabel.t = VariantTypeLabel (Ident "~Stub_unit") *)
   let stub_type : VariantTypeLabel.t = VariantTypeLabel (Ident "Stub_unit") (* FIXME: add a tilde *)
 
@@ -55,18 +54,18 @@ module Utils = struct
       fun x1 -> ... -> fun xn -> e
   *)
   let abstract_over_ids (type a) (ids : Ident.t list) (body : a Expr.t) : a Expr.t =
-    List.fold_right ids ~init:body ~f:(fun param body ->
+    List.fold_right (fun param body ->
       Expr.EFunction { param ; body }
-    )
+    ) ids body
 
   (*
     f, [ x1 ; ... ; xn ] |->
       f x1 ... xn
   *)
   let appl_list (type a) (f : a Expr.t) (args : a Expr.t list) : a Expr.t =
-    List.fold args ~init:f ~f:(fun func arg ->
-      EAppl { func ; arg }
-    )
+    List.fold_left (fun func arg ->
+      Expr.EAppl { func ; arg }
+    ) f args
 
   (*
     Identity function expression.
@@ -88,8 +87,8 @@ module Utils = struct
   *)
   let proj (type a) (tau : a Expr.t) (label : RecordLabel.t) : a Expr.t =
     match tau with
-    | ERecord m when Map.mem m label ->
-      Map.find_exn m label
+    | ERecord m when RecordLabel.Map.mem label m ->
+      RecordLabel.Map.find label m
     | _ -> EProject { record = tau ; label }
 
   let freeze (type a) (expr : a Expr.t) : a Expr.t =
@@ -116,9 +115,9 @@ module Utils = struct
       | SUntyped { var ; _ } -> [ var ]
       | STyped { typed_var = { var ; _ } ; _ } -> [ var ]
       | SFun fsig -> [ id_of_fsig fsig ]
-      | SFunRec fsigs -> List.map fsigs ~f:id_of_fsig
+      | SFunRec fsigs -> List.map id_of_fsig fsigs
     in
-    List.filter ids ~f:(fun id -> not @@ Ident.equal id Reserved.catchall)
+    List.filter (fun id -> not @@ Ident.equal id Reserved.catchall) ids
 
   let stmt_to_expr (type a) (stmt : a statement) (body : a Expr.t) : a Expr.t =
     match stmt with
@@ -148,11 +147,11 @@ module Function_components = struct
     ; tau_opt : 'a Expr.t option
     ; params  : Ident.t list
     ; defn    : 'a Expr.t
-    } 
+    }
 
   let map (x : 'a t) ~(f : 'a Expr.t -> 'b Expr.t) : 'b t =
     { func_id = x.func_id
-    ; tau_opt = Option.map x.tau_opt ~f
+    ; tau_opt = Option.map f x.tau_opt
     ; params  = x.params
     ; defn    = f x.defn
     }
@@ -178,17 +177,17 @@ module Funsig = struct
     | FUntyped { func_id ; params ; defn } ->
       { func_id ; tau_opt = None ; params ; defn }
     | FTyped { type_vars ; func_id ; params ; ret_type ; defn } ->
-      { func_id ; defn ; params = type_vars @ List.map params ~f:Param.to_id
+      { func_id ; defn ; params = type_vars @ List.map Param.to_id params
       ; tau_opt = Some (
         (* Create dependent parameters out of the type variables *)
         let tvar_params : Bluejay.param list =
-          List.map type_vars ~f:(fun var -> Expr.TVarDep { var ; tau = EType })
+          List.map (fun var -> Expr.TVarDep { var ; tau = EType }) type_vars
         in
         (* Create an arrow type (possibly dependent) out of all parameters *)
-        List.fold_right (tvar_params @ params) ~init:ret_type ~f:(fun tvar codomain ->
+        List.fold_right (fun tvar codomain ->
           match tvar with
-          | TVar { var = _ ; tau } -> Expr.ETypeFun { domain = tau ; codomain ; dep = `No }
+          | Expr.TVar { var = _ ; tau } -> Expr.ETypeFun { domain = tau ; codomain ; dep = `No }
           | TVarDep { var ; tau } -> ETypeFun { domain = tau ; codomain ; dep = `Binding var }
-        )
+        ) (tvar_params @ params) ret_type
       ) }
 end

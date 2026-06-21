@@ -1,6 +1,4 @@
 
-open Core
-
 module type S = sig
   type k
   type t
@@ -36,7 +34,7 @@ module Make_BFS : MAKE = functor (K : Smt.Symbol.KEY) -> struct
     BFS (Q.push target (Target.path_n target) q)
 
   let push_list (x : t) (ls : k Target.t list) : t =
-    List.fold ls ~init:x ~f:push_one
+    List.fold_left push_one x ls
 
   let remove (BFS q : t) (target : k Target.t) : t =
     BFS (Q.remove target q)
@@ -70,7 +68,7 @@ module Make_DFS : MAKE = functor (K : Smt.Symbol.KEY) -> struct
     { x with q = Q.push target (n_strides * stride - n mod stride) q }
 
   let push_list (x : t) (ls : k Target.t list) : t =
-    List.fold ls ~init:x ~f:push_one
+    List.fold_left push_one x ls
 
   let pop ({ q ; _ } as x : t) : (k Target.t * t) option =
     match Q.pop q with
@@ -96,7 +94,7 @@ module Make_uniform : MAKE = functor (K : Smt.Symbol.KEY) -> struct
     Uniform (Q.push target (Interp_common.Rand.any_pos_int ()) q)
 
   let push_list (q : t) (ls : k Target.t list) : t =
-    List.fold ls ~init:q ~f:push_one
+    List.fold_left push_one q ls
 
   let remove (Uniform q : t) (target : k Target.t) : t =
     Uniform (Q.remove target q)
@@ -109,9 +107,9 @@ end
 
 module Merge (P : S) (Q : S with type k = P.k) : S with type k = P.k = struct
   type k = P.k
-  type t = 
+  type t =
     { p : P.t
-    ; q : Q.t 
+    ; q : Q.t
     ; turn : [ `P | `Q ] }
 
   let make (options : Options.t) : t =
@@ -133,7 +131,7 @@ module Merge (P : S) (Q : S with type k = P.k) : S with type k = P.k = struct
     match turn with
     | `P -> begin
       match P.pop p with
-      | None -> 
+      | None ->
         if Option.is_some (Q.pop q)
         then failwith "Invariant failure: merged target queues have different sizes"
         else None
@@ -147,7 +145,7 @@ module Merge (P : S) (Q : S with type k = P.k) : S with type k = P.k = struct
         else None
       | Some (target, q') -> Some (target, { q = q' ; p = P.remove p target ; turn = `P })
     end
-  
+
 end
 
 module Make_merge (Make_P : MAKE) (Make_Q : MAKE) : MAKE = functor (K : Smt.Symbol.KEY) -> Merge (Make_P (K)) (Make_Q (K))

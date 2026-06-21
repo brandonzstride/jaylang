@@ -28,16 +28,16 @@ let interp =
   | Lang.Ast.SomeProgram (BluejayLanguage, pgm) ->
     begin
       match mode with
-      | `Type_erased | `Default -> Core.Fn.const () @@
+      | `Type_erased | `Default -> ignore @@
         Interpreter.Interp.eval_pgm ?feeder @@
         Translate.Convert.bjy_to_erased pgm
-      | `Bluejay -> Core.Fn.const () @@
+      | `Bluejay -> ignore @@
         Interpreter.Interp.eval_pgm ?feeder pgm
-      | `Desugared -> Core.Fn.const () @@
+      | `Desugared -> ignore @@
         (* Type splaying not allowed if the program is being interpretted in desugared mode *)
         Interpreter.Interp.eval_pgm ?feeder @@
         Translate.Convert.bjy_to_des pgm ~do_type_splay:No
-      | `Embedded -> Core.Fn.const () @@
+      | `Embedded -> ignore @@
         Interpreter.Interp.eval_pgm ?feeder @@
         Translate.Convert.bjy_to_emb pgm ~do_wrap ~do_type_splay
     end
@@ -46,9 +46,9 @@ let interp =
       match mode with
       | `Bluejay | `Type_erased ->
         failwith "Invalid mode for a desugared program."
-      | `Desugared | `Default -> Core.Fn.const () @@
+      | `Desugared | `Default -> ignore @@
         Interpreter.Interp.eval_pgm ?feeder pgm
-      | `Embedded -> Core.Fn.const () @@
+      | `Embedded -> ignore @@
         Interpreter.Interp.eval_pgm ?feeder @@
         Translate.Convert.des_to_emb pgm ~do_wrap ~do_type_splay
     end
@@ -57,9 +57,9 @@ let interp =
       match mode with
       | `Bluejay | `Type_erased | `Desugared ->
         failwith "Invalid mode for an embedded program."
-      | `Embedded | `Default -> Core.Fn.const () @@
+      | `Embedded | `Default -> ignore @@
         Interpreter.Interp.eval_pgm ?feeder pgm
     end
 
-let () = 
+let () =
   exit @@ Cmd.eval interp

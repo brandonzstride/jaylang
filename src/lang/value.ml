@@ -15,7 +15,6 @@
    subtyping and reuse of constructors.
 *)
 
-open Core
 open Ast
 open Constraints
 
@@ -38,7 +37,7 @@ end
 
 let default_to_string_closure_depth =
   ref @@
-  match Sys.getenv "TO_STRING_CLOSURE_DEPTH" with
+  match Core.Sys.getenv "TO_STRING_CLOSURE_DEPTH" with
   | Some s ->
     begin
       try
@@ -100,9 +99,9 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
 
     and 'a env = 'a t Store.t
 
-    (* 
+    (*
       An expression to be evaluated in an environment. The environment is in a cell in case
-      laziness is used to implement recursion.    
+      laziness is used to implement recursion.
     *)
     and 'a closure = { body : 'a Expr.t ; env : 'a env Env_cell.t }
 
@@ -116,16 +115,18 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
       | PUntouchable id, VUntouchable v -> Some [ v, id ]
       | _, VUntouchable _ -> None (* untouchable cannot match any *)
       | PAny, _
-      | PInt, VInt _ 
+      | PInt, VInt _
       | PBool, VBool _
       | PUnit, VUnit
       | PRecord, VRecord _ (* Currently, types match this *)
       | PModule, VModule _
       | PFun, VFunClosure _ -> Some []
       | PType, VRecord m ->
-        if List.for_all Ast_tools.Reserved.[ gen ; check ; wrap ] ~f:(Map.mem m)
-        then Some []
-        else None
+        let has_type_labels =
+          List.for_all (fun l -> RecordLabel.Map.mem l m)
+            Ast_tools.Reserved.[ gen ; check ; wrap ]
+        in
+        if has_type_labels then Some [] else None
       | PVariable id, _ -> Some [ v, id ]
       | PVariant { variant_label ; payload_id }, VVariant { label ; payload }
         when VariantLabel.equal variant_label label ->
@@ -137,7 +138,7 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
 
     let rec equal : type a. a t -> a t -> bool =
       fun a b ->
-      if phys_equal a b then true else
+      if a == b then true else
         match a, b with
         | VInt i1, VInt i2 -> V.equal Int.equal i1 i2
         | VBool b1, VBool b2 -> V.equal Bool.equal b1 b2
@@ -158,16 +159,16 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
         | VTypeRecord m1, VTypeRecord m2 -> RecordLabel.Map.equal equal m1 m2
         | VTypeModule l1, VTypeModule l2 -> begin
             match
-              List.fold2 l1 l2 ~init:(true, []) ~f:(fun (acc_b, acc_l) (RecordLabel label1, c1) (RecordLabel label2, c2) ->
+              List.fold_left2 (fun (acc_b, acc_l)
+                (RecordLabel.RecordLabel label1, c1) (RecordLabel.RecordLabel label2, c2) ->
                   if acc_b then
-                    equal_closure acc_l c1 c2
-                  , Expr.Alist.cons_assoc label1 label2 acc_l
+                    equal_closure acc_l c1 c2, Expr.Alist.cons_assoc label1 label2 acc_l
                   else
                     acc_b, acc_l
-                )
+                ) (true, []) l1 l2
             with
-            | Ok (b, _) -> b
-            | Unequal_lengths -> false
+            | exception Invalid_argument _ -> false
+            | b, _ -> b
           end
         | VTypeFun r1, VTypeFun r2 ->
           equal r1.domain r2.domain
@@ -183,11 +184,18 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
             | `Unequal_lengths _ -> false
           end
         | VTypeVariant l1, VTypeVariant l2 ->
-          List.equal (Tuple2.equal ~eq1:VariantTypeLabel.equal ~eq2:equal) l1 l2
+          List.equal (fun (lbl1, v1) (lbl2, v2) ->
+            VariantTypeLabel.equal lbl1 lbl2
+            && equal v1 v2
+          ) l1 l2
         | VTypeSingle v1, VTypeSingle v2 -> equal v1 v2
         | VTypeList v1, VTypeList v2 -> equal v1 v2
         | VTypeIntersect l1, VTypeIntersect l2 ->
-          List.equal (Tuple3.equal ~eq1:VariantTypeLabel.equal ~eq2:equal ~eq3:equal) l1 l2
+          List.equal (fun (lbl1, v1, v1') (lbl2, v2, v2') ->
+            VariantTypeLabel.equal lbl1 lbl2
+            && equal v1 v2
+            && equal v1' v2'
+          ) l1 l2
         (* intensionally equal *)
         | VAbstractType i1, VAbstractType i2 -> i1 = i2
         | VUnboundVariable id1, VUnboundVariable id2 -> Ident.equal id1 id2
@@ -207,7 +215,7 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
 
     and equal_closure : type a. Expr.Alist.t -> a closure -> a closure -> bool =
       fun bindings a b ->
-      if phys_equal a b then true else
+      if a == b then true else
         Expr.compare (fun id1 id2 ->
             match Expr.Alist.compare_in_t id1 id2 bindings with
             | `Found x -> x
@@ -237,16 +245,20 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
     | VFunClosure { param = Ident s ; closure } -> Format.sprintf "(fun %s -> %s)" s (_closure_to_string closure)
     | VVariant { label ; payload } -> Format.sprintf "(`%s (%s))" (VariantLabel.to_string label) (_to_string payload)
     | VRecord record_body -> RecordLabel.record_body_to_string ~sep:"=" record_body _to_string
-    | VModule module_body -> 
-      Format.sprintf "struct %s end" 
-        (String.concat ~sep:" " @@ List.map (Map.to_alist module_body) ~f:(fun (key, data) -> Format.sprintf "let %s = %s" (RecordLabel.to_string key) (_to_string data)))
+    | VModule module_body ->
+      Format.sprintf "struct %s end"
+        (String.concat " " @@ List.map (fun (key, data) ->
+            Format.sprintf "let %s = %s" (RecordLabel.to_string key) (_to_string data)
+          ) (RecordLabel.Map.to_list module_body))
     | VTypeMismatch -> "Type_mismatch"
     | VUnboundVariable Ident v -> Format.sprintf "Unbound_variable %s" v
     | VAbort -> "Abort"
     | VVanish -> "Vanish"
     | VUntouchable v -> Format.sprintf "Untouchable (%s)" (_to_string v)
-    | VList ls -> Format.sprintf "[ %s ]" (String.concat ~sep:" ; " @@ List.map ~f:_to_string ls)
-    | VMultiArgFunClosure { params ; closure } -> Format.sprintf "(fun %s -> %s)" (String.concat ~sep:" ; " @@ List.map ~f:(fun (Ident s) -> s) params) (_closure_to_string closure)
+    | VList ls -> Format.sprintf "[ %s ]" (String.concat " ; " @@ List.map _to_string ls)
+    | VMultiArgFunClosure { params ; closure } ->
+      Format.sprintf "(fun %s -> %s)"
+        (String.concat " ; " @@ List.map Ident.to_string params) (_closure_to_string closure)
     | VType -> "type"
     | VTypeInt -> "int"
     | VTypeBool -> "bool"
@@ -254,9 +266,14 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
     | VTypeBottom -> "bottom"
     | VTypeUnit -> "unit"
     | VTypeRecord record_body -> RecordLabel.record_body_to_string ~sep:":" record_body _to_string
-    | VTypeModule ls -> Format.sprintf "sig %s end" (String.concat ~sep:" " @@ List.map ls ~f:(fun (label, body) -> Format.sprintf "val %s : %s" (RecordLabel.to_string label) (_closure_to_string body)))
+    | VTypeModule ls ->
+      Format.sprintf "sig %s end"
+        (String.concat " " @@ List.map (fun (label, body) ->
+            Format.sprintf "val %s : %s" (RecordLabel.to_string label) (_closure_to_string body)
+          ) ls)
     | VTypeFun { domain ; codomain } -> Format.sprintf "(%s -> %s)" (_to_string domain) (_to_string codomain)
-    | VTypeDepFun { binding = Ident s ; domain ; codomain } -> Format.sprintf "((%s : %s) -> %s)" s (_to_string domain) (_closure_to_string codomain)
+    | VTypeDepFun { binding = Ident s ; domain ; codomain } ->
+      Format.sprintf "((%s : %s) -> %s)" s (_to_string domain) (_closure_to_string codomain)
     | VTypeRefinement { tau ; predicate } -> Format.sprintf "{ %s | %s }" (_to_string tau) (_to_string predicate)
     | VTypeSingleFun -> Format.sprintf "singletype"
     | VTypeSingle v -> Format.sprintf "(singletype (%s))" (_to_string v)
@@ -265,23 +282,28 @@ module Make (Store : STORE) (Env_cell : CELL) (V : Utils.Equatable.P1) = struct
     | VAbstractType i -> Format.sprintf "(abstract %d)" i
     | VTypeIntersect ls ->
       Format.sprintf "(%s)"
-        (String.concat ~sep:" && " @@ List.map ls ~f:(fun (VariantTypeLabel Ident s, tau1, tau2) -> Format.sprintf "((``%s (%s)) -> %s)" s (_to_string tau1) (_to_string tau2)))
-    | VTypeMu { var = Ident s ; params ; closure } -> 
+        (String.concat " && " @@ List.map (fun (VariantTypeLabel.VariantTypeLabel Ident s, tau1, tau2) ->
+            Format.sprintf "((``%s (%s)) -> %s)" s (_to_string tau1) (_to_string tau2)
+          ) ls)
+    | VTypeMu { var = Ident s ; params ; closure } ->
       Format.sprintf "(mu %s. %s)"
-        (s ^ String.concat ~sep:" " @@ List.map params ~f:Ident.to_string) (_closure_to_string closure)
+        (s ^ String.concat " " @@ List.map Ident.to_string params) (_closure_to_string closure)
     | VTypeVariant ls ->
       Format.sprintf "(%s)"
-        (String.concat ~sep: "| " @@ List.map ls ~f:(fun (VariantTypeLabel Ident s, tau) -> Format.sprintf "(`%s of %s)" s (_to_string tau)))
+        (String.concat "| " @@ List.map (fun (VariantTypeLabel.VariantTypeLabel Ident s, tau) ->
+          Format.sprintf "(`%s of %s)" s (_to_string tau)) ls)
 
   and _closure_to_string : type a. a closure -> string = fun c ->
     if !_closure_depth_counter <= 0 then "«closure»" else
       let () = _closure_depth_counter := !_closure_depth_counter - 1 in
       let answer =
-        let {body; env} = c in 
+        let {body; env} = c in
         let env_to_string e =
-          String.concat ~sep:", " (List.map (Store.mappings e) ~f:(fun (Ident x, v) -> 
+          String.concat ", " (List.map (fun (Ident.Ident x, v) ->
               let v_str = _to_string v in
-              Format.sprintf "(%s, %s)" x v_str)) in
+              Format.sprintf "(%s, %s)" x v_str
+            ) (Store.mappings e))
+        in
         let body_eval = Expr.to_string body in
         let env_eval = Env_cell.to_string (env_to_string) env in
         Format.sprintf "{%s ; %s}" body_eval env_eval
@@ -341,7 +363,7 @@ module List_store = struct
     else (id, v) :: env
 
   (*
-    Inlining is pretty important here. We fetch a lot, and the compiler can 
+    Inlining is pretty important here. We fetch a lot, and the compiler can
     make some optimizations if we inline.
     This is experimentally (but informally) confirmed.
   *)
@@ -358,20 +380,20 @@ module List_store = struct
 end
 
 module Map_store = struct
-  type 'a t = 'a Ident.Map.t 
+  type 'a t = 'a Ident.Map.t
 
   let empty : 'a t = Ident.Map.empty
 
   let[@inline always] add (id : Ident.t) (v : 'a) (env : 'a t) : 'a t =
     if Ident.equal Ast_tools.Reserved.catchall id
     then env
-    else Map.set env ~key:id ~data:v
+    else Ident.Map.add id v env
 
   let[@inline always] fetch (id : Ident.t) (env : 'a t) : 'a option =
-    Map.find env id
+    Ident.Map.find_opt id env
 
   let[@inline always] mappings (env : 'a t) : (Ident.t * 'a) list =
-    Map.to_alist env
+    Ident.Map.to_list env
 end
 
 module Lazy_cell = struct
@@ -414,7 +436,7 @@ module Error_msg (Value : sig type t val to_string : t -> string end) = struct
   let pattern_not_found patterns v =
     Format.sprintf "Value `%s` not in pattern list [ %s ]"
       (Value.to_string v)
-      (String.concat ~sep:", " @@ List.map patterns ~f:(fun (p, _) -> Pattern.to_string p))
+      (String.concat ", " @@ List.map (fun (p, _) -> Pattern.to_string p) patterns)
 
   let bad_appl vfunc =
     Format.sprintf "Apply to non-function %s" (Value.to_string vfunc)
@@ -428,10 +450,10 @@ module Error_msg (Value : sig type t val to_string : t -> string end) = struct
   let bad_not v =
     Format.sprintf "Bad unary operation `not %s`" (Value.to_string v)
 
-  let cond_non_bool v = 
+  let cond_non_bool v =
     Format.sprintf "Condition on non-bool `%s`" (Value.to_string v)
 
-  let case_non_int v = 
+  let case_non_int v =
     Format.sprintf "Case on non-int `%s`" (Value.to_string v)
 
   let appl_non_table v =

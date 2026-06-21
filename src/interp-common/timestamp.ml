@@ -1,4 +1,3 @@
-open Core
 
 module type S = sig
   type t
@@ -9,16 +8,15 @@ module type S = sig
   val compare : t -> t -> int
   val to_string : t -> string
   val uid : t -> int
-
-  type comparator_witness
-  val comparator : (t, comparator_witness) Comparator.t
 end
 
 module Simple : S = struct
   module T = struct
     type t =
       | Timestamp of int list [@@unboxed]
-    [@@deriving equal, sexp, hash]
+
+    let equal (Timestamp a) (Timestamp b) =
+      List.equal Int.equal a b
   end
 
   include T
@@ -30,19 +28,20 @@ module Simple : S = struct
   let compare (Timestamp xs1) (Timestamp xs2) =
     List.compare compare (List.rev xs1) (List.rev xs2)
   let to_string (Timestamp xs) =
-    String.concat ~sep:"." (List.map (List.rev xs) ~f:string_of_int)
+    String.concat "." (List.rev_map string_of_int xs)
+
+  let empty_hash = Hashtbl.hash []
 
   (* The standard library polymorphic hash has collisions after length 10, so we derive hash for uid *)
-  let uid = hash 
-
-  include Comparator.Make (struct
-      include T
-      let compare = compare
-    end)
+  let uid (Timestamp ls) =
+    List.fold_left (fun acc a -> Hashtbl.hash (acc, a)) empty_hash ls
 end
 
 module PerfectHash : S = struct
-  type t = int [@@deriving equal, compare, sexp]
+  type t = int
+
+  let equal = Int.equal
+  let compare = Int.compare
 
   type entry = {
     mutable pushed : int;
@@ -91,12 +90,12 @@ module PerfectHash : S = struct
 
   let to_string (time : t) : string =
     let entry = Vector.get table time in
-    String.concat ~sep:"." (List.map (List.rev entry.time) ~f:string_of_int)
+    String.concat "." (List.rev_map string_of_int entry.time)
 
   let uid x = x
-
-  include Comparator.Make(Int)
 end
 
 (* Select a default implementation *)
 include Simple
+
+module Map = Baby.W.Map.Make (Simple)

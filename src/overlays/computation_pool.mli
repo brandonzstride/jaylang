@@ -17,15 +17,14 @@ module type Computation = sig
   module Work : sig
     type t
     val run : t -> Compute_result.t
-    (** [run t] does the work on [t] and promises that it will not
-        invoke [Lwt].
-        
+    (** [run t] does the work on [t].
+
         NOTE: This function is expected to be run in parallel on many
         threads, so it should be thread-safe. *)
   end
 
-  val timeout_sec : float
-  (** [timeout_sec] is the number of seconds a computation is allowed to
+  val timeout : Mtime.span
+  (** [timeout] is the span of time a computation is allowed to
       run before it is stopped short. *)
 end
 

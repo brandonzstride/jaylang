@@ -1,6 +1,4 @@
 
-open Core
-
 type 'a terminal = 'a constraint 'a = [ `Terminal ]
 
 type 'a eval = 'a constraint 'a = [ `Eval ]
@@ -28,7 +26,7 @@ let min (type a) (x : a t) (y : a t) : a t =
 
 let is_terminal (type a) (x : a t) : bool =
   match x with
-  | Found_abort _ | Type_mismatch _ | Timeout | Unbound_variable _ 
+  | Found_abort _ | Type_mismatch _ | Timeout | Unbound_variable _
   | Exhausted_full_tree | Exhausted_pruned_tree | Unknown -> true
   | Reached_max_step | Finished -> false
 
@@ -51,23 +49,28 @@ let to_string (type a) (x : a t) : string =
   | Finished                 -> "Finished interpretation"
 
 let to_loud_string (type a) (x : a t) : string =
+  (* commented functions are only since 5.5 *)
   let make_loud s =
-    String.map s ~f:(fun c ->
-      if Char.is_alpha c
-      then Char.uppercase c
+    String.map (fun c ->
+      if Core.Char.is_alpha c (*Char.Ascii.is_letter c*) then
+        Core.Char.uppercase c
+        (* Char.Ascii.uppercase c *)
+      else if Core.Char.is_whitespace c (*Char.Ascii.is_white c*) then
+        '_'
       else
-        if Char.is_whitespace c
-        then '_'
-        else c
-    )
+        c
+    ) s
   in
   let s = to_string x in
-  match String.substr_index s ~pattern:":" with
+  match Core.String.substr_index s ~pattern:":" with
   | None -> make_loud s
   | Some i ->
-    let before_colon = String.prefix s i in
-    let after_colon = String.drop_prefix s i in
+    let before_colon = Core.String.prefix s i in
+    let after_colon = Core.String.drop_prefix s i in
     make_loud before_colon ^ after_colon
+  (* match String.split_first ~sep:":" s with
+  | None -> make_loud s
+  | Some (before, after) -> make_loud before ^ after *)
 
 module Eval = struct
   type nonrec t = [ `Eval ] t

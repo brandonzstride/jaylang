@@ -1,5 +1,4 @@
 
-open Core
 open Concolic.Common
 
 module Driver = Concolic.Driver.Of_logger (Utils.Logger.Transformer_of_builder (Utils.Dlist.Specialize (Stat)))
@@ -14,7 +13,7 @@ module Basic_test = struct
   end
 
   type[@warning "-69"] t =
-    { testname : Filename.t
+    { testname : string
     (* ; test_result : Status.Terminal.t *)
     ; interp_time : Mtime.Span.t
     ; solve_time : Mtime.Span.t
@@ -31,11 +30,11 @@ module Basic_test = struct
       fun span ->
         let fl = Utils.Time.span_to_ms span in
         Float.to_string @@
-        if Float.(fl < 1.)
-        then Float.round_decimal fl ~decimal_digits:2
-        else Float.round_significant fl ~significant_digits:2
+        if Float.compare fl 1. < 0
+        then Core.Float.round_decimal fl ~decimal_digits:2
+        else Core.Float.round_significant fl ~significant_digits:2
     in
-    [ Filename.basename x.testname |> String.take_while ~f:(Char.(<>) '.')
+    [ Filename.basename x.testname |> Core.String.take_while ~f:((<>) '.')
     ; span_to_ms_string x.interp_time
     ; span_to_ms_string x.solve_time
     ; span_to_ms_string x.total_time
@@ -46,7 +45,7 @@ module Basic_test = struct
     (trial : Trial.t)
     (mode : string)
     (runtest : Lang.Ast.some_program -> Status.Terminal.t * tape) (* promises to update interp and solve time *)
-    (testname : Filename.t)
+    (testname : string)
     : t =
     let source = Lang.Parser.parse_program_from_file testname in (* span should maybe include this *)
     let span, (_, tape) = Utils.Time.time runtest source in
@@ -67,13 +66,13 @@ module Basic_test = struct
       let n_trials = List.length tests in
       let init = { hd with trial = Average } in
       let sum =
-        List.fold tl ~init ~f:(fun acc x ->
+        List.fold_left (fun acc x ->
           { acc with
             interp_time = Mtime.Span.add acc.interp_time x.interp_time
           ; solve_time = Mtime.Span.add acc.solve_time x.solve_time
           ; total_time = Mtime.Span.add acc.total_time x.total_time
           ; n_interps = acc.n_interps + x.n_interps }
-        )
+        ) init tl
       in
       { sum with
         interp_time = Utils.Time.divide_span sum.interp_time n_trials
@@ -81,7 +80,7 @@ module Basic_test = struct
       ; total_time = Utils.Time.divide_span sum.total_time n_trials
       ; n_interps = sum.n_interps / n_trials
       }
-end 
+end
 
 module Result_table = struct
   type t = Basic_test.t Latex_tbl.t
@@ -94,16 +93,16 @@ module Result_table = struct
   (* TODO: we should interweave the computations so as not to favor one *)
   (* Then should have a tester type, which comes with a "mode" name.
     And Basic_test can put many results in the same row *)
-  let of_testname 
+  let of_testname
     ?(avg_only : bool = true)
     (mode : string)
     (n_trials : int)
     (runtest : Lang.Ast.some_program -> Status.Terminal.t * tape)
-    (testname : Filename.t)
+    (testname : string)
     : t =
     Latex_tbl.append_rows empty (
       let results =
-        List.init n_trials ~f:(fun n ->
+        List.init n_trials (fun n ->
           Basic_test.make (Number n) mode runtest testname
         )
       in
@@ -116,15 +115,16 @@ module Result_table = struct
     ?(avg_only : bool = true)
     (mode : string)
     (n_trials : int)
-    (dirs : Filename.t list)
+    (dirs : string list)
     (runtest : Lang.Ast.some_program -> Status.Terminal.t * tape)
     : t =
-    let open List.Let_syntax in
-    dirs
-    |> Utils.File_utils.get_all_bjy_files
-    |> List.sort ~compare:(fun a b -> String.compare (Filename.basename a) (Filename.basename b))
-    >>| of_testname ~avg_only mode n_trials runtest
-    |> List.reduce_exn ~f:Latex_tbl.concat
+    let rows =
+      dirs
+      |> Utils.File_utils.get_all_bjy_files
+      |> List.sort (fun a b -> String.compare (Filename.basename a) (Filename.basename b))
+      |> List.map (of_testname ~avg_only mode n_trials runtest)
+    in
+    List.fold_left Latex_tbl.concat (List.hd rows) (List.tl rows)
 
   let add_average
     (mode : string)
@@ -133,20 +133,20 @@ module Result_table = struct
     let t0 = Mtime.Span.zero in
     let init = t0, t0, t0, 0, 0 in
     let interp_sum, solve_sum, total_sum, total_interps, n =
-      List.fold tbl.rows ~init ~f:(fun ((acc_interp_time, acc_solve_time, acc_total_time, acc_interps, n) as acc) row_or_hline ->
+      List.fold_left (fun ((acc_interp_time, acc_solve_time, acc_total_time, acc_interps, n) as acc) row_or_hline ->
         match row_or_hline with
-        | Row row ->
-          Mtime.Span.add acc_interp_time row.interp_time
+        | Latex_tbl.Row_or_hline.Row row ->
+          Mtime.Span.add acc_interp_time row.Basic_test.interp_time
           , Mtime.Span.add acc_solve_time row.solve_time
           , Mtime.Span.add acc_total_time row.total_time
           , acc_interps + row.n_interps
           , n + 1
         | Hline -> acc
-      )
+      ) init tbl.rows
     in
     Latex_tbl.append_rows tbl [
       Basic_test.{
-          testname = mode ^ " average" 
+          testname = mode ^ " average"
         ; trial = Average
         ; mode
         ; interp_time = Utils.Time.divide_span interp_sum n
@@ -173,18 +173,18 @@ let run () =
   let+ options = Options.cmd_arg_term
   and+ n_trials, dirs = cdbench_args in
   (* prepare channels to capture and discard all testing output *)
-  let oc_null = Out_channel.create "/dev/null" in
+  let oc_null = Out_channel.open_bin "/dev/null" in
   Format.set_formatter_out_channel oc_null;
   let runtest_eager pgm =
     Driver.Eager.test_some_program
-      ~options:{ options with random = true }
+      ~options:{ options with is_random = true }
       ~do_wrap:true        (* always wrap during benchmarking *)
       ~do_type_splay:No    (* never type splay during benchmarking *)
       pgm
   in
   let runtest_deferred pgm =
     Driver.Deferred.test_some_program
-      ~options:{ options with random = true }
+      ~options:{ options with is_random = true }
       ~do_wrap:true        (* always wrap during benchmarking *)
       ~do_type_splay:No    (* never type splay during benchmarking *)
       pgm
@@ -194,7 +194,7 @@ let run () =
   let results = Latex_tbl.concat eager_results deferred_results in
   (* Testing is done, so we can set back the stdout channel *)
   Format.set_formatter_out_channel Out_channel.stdout;
-  results 
+  results
   |> Latex_tbl.show ~hum:true
   |> Format.printf "\n%s\n"
 

@@ -4,7 +4,7 @@
  (modules cbenchmark)
  (package jay)
  (public_name jay.cbenchmark)
- (libraries lang utils ttag metadata latex_tbl latex_format concolic deferred core core_unix.sys_unix)
+ (libraries lang utils ttag metadata latex_tbl latex_format concolic deferred)
 )
 
 (executable
@@ -12,5 +12,5 @@
  (modules cdbenchmark)
  (package jay)
  (public_name jay.cdbenchmark)
- (libraries lang utils ttag metadata latex_tbl latex_format concolic deferred core core_unix.sys_unix)
+ (libraries lang utils ttag metadata latex_tbl latex_format concolic deferred)
 )

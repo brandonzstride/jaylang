@@ -1,6 +1,4 @@
 
-open Core
-
 (* we can safely use this when making because it's promised that we never make a target twice *)
 let uid = Utils.Counter.create ()
 

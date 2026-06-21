@@ -9,8 +9,6 @@
    the reader is unfamiliar with this use of GADTs.
 *)
 
-open Core
-
 (*
   This module defines some types that constrain a polymorphic variable 'a
   to be some polymorphic variant or to be included in a set of polymorphic variants.
@@ -70,45 +68,62 @@ open Constraints
 
 module Ident = struct
   module T = struct
-    type t = Ident of string
-    [@@unboxed] [@@deriving equal, compare, sexp, hash]
+    type t = Ident of string [@@unboxed]
+
+    let[@inline] equal (Ident a) (Ident b) = String.equal a b
+
+    let[@inline] compare (Ident a) (Ident b) = String.compare a b
   end
 
   include T
 
   let to_string (Ident s) = s
 
-  module Set = Set.Make (T)
-  module Map = Map.Make (T)
+  include Baby.W.Make (T)
 end
 
 module RecordLabel = struct
   module T = struct
-    type t = RecordLabel of Ident.t
-    [@@unboxed] [@@deriving equal, compare, sexp, hash]
+    type t = RecordLabel of Ident.t [@@unboxed]
+
+    let[@inline] equal (RecordLabel a) (RecordLabel b) = Ident.equal a b
+
+    let[@inline] compare (RecordLabel a) (RecordLabel b) = Ident.compare a b
   end
 
   include T
-  module Map = Map.Make (T)
+  module Map = Baby.W.Map.Make (T)
 
   let to_string (RecordLabel Ident s) = s
 
   let record_body_to_string ?(sep : string = "=") m f =
-    Core.Map.to_alist m
-    |> List.map ~f:(fun (l, x) -> Format.sprintf "%s %s %s" (to_string l) sep (f x))
-    |> fun ls -> if List.length ls = 0 then "{:}" else "{ " ^ String.concat ~sep:" ; " ls ^ " }"
+    let items =
+      Map.to_list m
+      |> List.map (fun (l, x) -> Printf.sprintf "%s %s %s" (to_string l) sep (f x))
+    in
+    match items with
+    | [] -> "{:}"
+    | ls -> "{ " ^ String.concat " ; " ls ^ " }"
 end
 
 module VariantLabel = struct
-  type t = VariantLabel of Ident.t
-  [@@unboxed] [@@deriving equal, compare, sexp, hash]
+  type t = VariantLabel of Ident.t [@@unboxed]
+
+  let[@inline] equal (VariantLabel a) (VariantLabel b) = Ident.equal a b
+
+  let[@inline] compare (VariantLabel a) (VariantLabel b) = Ident.compare a b
 
   let to_string (VariantLabel Ident s) = s
 end
 
 module VariantTypeLabel = struct
-  type t = VariantTypeLabel of Ident.t
-  [@@unboxed] [@@deriving equal, compare, sexp, hash]
+  type t = VariantTypeLabel of Ident.t [@@unboxed]
+
+  let[@inline] equal (VariantTypeLabel a) (VariantTypeLabel b) =
+    Ident.equal a b
+
+  let[@inline] compare (VariantTypeLabel a) (VariantTypeLabel b) =
+    Ident.compare a b
 
   let to_variant_label (VariantTypeLabel l) =
     VariantLabel.VariantLabel l
@@ -316,7 +331,7 @@ module Expr = struct
     | SUntyped { var ; _ } -> [ var ]
     | STyped { typed_var = { var ; _ } ; _ } -> [ var ]
     | SFun fs -> [ func_id_of_funsig fs ]
-    | SFunRec fss -> List.map fss ~f:func_id_of_funsig
+    | SFunRec fss -> List.map func_id_of_funsig fss
 
   module Alist = struct
     (* association list of identifiers *)
@@ -341,7 +356,7 @@ module Expr = struct
 
     let cons_assocs ids1 ids2 t =
       match Int.compare (List.length ids1) (List.length ids2) with
-      | 0 -> `Bindings (concat (List.zip_exn ids1 ids2) t)
+      | 0 -> `Bindings (concat (List.combine ids1 ids2) t)
       | x -> `Unequal_lengths x
   end
 
@@ -365,7 +380,7 @@ module Expr = struct
     in
     let rec compare : type a. Alist.t -> a t -> a t -> int =
       fun bindings a b ->
-        if phys_equal a b then 0 else
+        if a == b then 0 else
           let- () = Int.compare (to_rank a) (to_rank b) in
           let cmp : type a. a t -> a t -> int = fun x y -> compare bindings x y in
           match a, b with
@@ -404,7 +419,7 @@ module Expr = struct
           | EAppl c1, EAppl c2 -> compare_application bindings c1 c2
           | EMatch r1, EMatch r2 -> begin
               let- () = cmp r1.subject r2.subject in
-              Tuple2.get1 @@
+              fst @@
               compare_lists r1.patterns r2.patterns bindings ~f:(fun (p1, e1) (p2, e2) bindings ->
                   match Pattern.cmp p1 p2 with
                   | `LT -> `Done (-1)
@@ -425,7 +440,7 @@ module Expr = struct
             cmp r1.payload r2.payload
           | ECase r1, ECase r2 ->
             let- () = cmp r1.subject r2.subject in
-            let- () = List.compare (Tuple2.compare ~cmp1:Int.compare ~cmp2:cmp) r1.cases r2.cases in
+            let- () = List.compare (Utils.Etc.compare_tup2 Int.compare cmp) r1.cases r2.cases in
             cmp r1.default r2.default
           | EUntouchable e1, EUntouchable e2 -> cmp e1 e2
           | EAbort s1, EAbort s2 -> String.compare s1 s2
@@ -455,7 +470,7 @@ module Expr = struct
               | `Unequal_lengths x -> x
             end
           | ETypeVariant l1, ETypeVariant l2 ->
-            List.compare (Tuple2.compare ~cmp1:VariantTypeLabel.compare ~cmp2:cmp) l1 l2
+            List.compare (Utils.Etc.compare_tup2 VariantTypeLabel.compare cmp) l1 l2
           | ELetTyped r1, ELetTyped r2 -> begin
               let- () =
                 compare_typed_binding_opts
@@ -466,12 +481,12 @@ module Expr = struct
               compare (Alist.cons_assoc r1.typed_var.var r2.typed_var.var bindings) r1.body r2.body
             end
           | ETypeIntersect l1, ETypeIntersect l2 ->
-            List.compare (Tuple3.compare ~cmp1:VariantTypeLabel.compare ~cmp2:cmp ~cmp3:cmp) l1 l2
+            List.compare (Utils.Etc.compare_tup3 VariantTypeLabel.compare cmp cmp) l1 l2
           | EList l1, EList l2 -> List.compare cmp l1 l2
           | EListCons (hd1, tl1), EListCons (hd2, tl2) ->
             let- () = cmp hd1 hd2 in cmp tl1 tl2
           | EModule l1, EModule l2 ->
-            Tuple2.get1 @@
+            fst @@
             compare_lists l1 l2 bindings ~f:(fun s1 s2 bindings ->
                 match compare_statement bindings s1 s2 with
                 | 0 -> begin
@@ -493,7 +508,7 @@ module Expr = struct
             compare (Alist.cons_assoc (func_id_of_funsig r1.func) (func_id_of_funsig r2.func) bindings)
               r1.body r2.body
           | ELetFunRec r1, ELetFunRec r2 -> begin
-              match Alist.cons_assocs (List.map r1.funcs ~f:func_id_of_funsig) (List.map r2.funcs ~f:func_id_of_funsig) bindings with
+              match Alist.cons_assocs (List.map func_id_of_funsig r1.funcs) (List.map func_id_of_funsig r2.funcs) bindings with
               | `Bindings bindings ->
                 let- () = List.compare (compare_funsig bindings) r1.funcs r2.funcs in
                 compare bindings r1.body r2.body
@@ -513,13 +528,13 @@ module Expr = struct
 
     and compare_application : type a. Alist.t -> a application -> a application -> int =
       fun bindings a1 a2 ->
-        if phys_equal a1 a2 then 0 else
+        if a1 == a2 then 0 else
           let- () = compare bindings a1.func a2.func in
           compare bindings a1.arg a2.arg
 
     and compare_statement : type a. Alist.t -> a statement -> a statement -> int =
       fun bindings s1 s2 ->
-        if phys_equal s1 s2 then 0 else
+        if s1 == s2 then 0 else
           let- () = Int.compare (statement_to_rank s1) (statement_to_rank s2) in
           match s1, s2 with
           | SUntyped r1, SUntyped r2 -> compare (Alist.cons_assoc r1.var r2.var bindings) r1.defn r2.defn
@@ -532,7 +547,7 @@ module Expr = struct
             compare bindings r1.defn r2.defn
           | SFun fs1, SFun fs2 -> compare_funsig bindings fs1 fs2
           | SFunRec l1, SFunRec l2 -> begin
-              match Alist.cons_assocs (List.map l1 ~f:func_id_of_funsig) (List.map l2 ~f:func_id_of_funsig) bindings with
+              match Alist.cons_assocs (List.map func_id_of_funsig l1) (List.map func_id_of_funsig l2) bindings with
               | `Bindings bindings -> List.compare (compare_funsig bindings) l1 l2
               | `Unequal_lengths x -> x
             end
@@ -540,7 +555,7 @@ module Expr = struct
 
     and compare_funsig : type a. Alist.t -> a funsig -> a funsig -> int =
       fun bindings fs1 fs2 ->
-        if phys_equal fs1 fs2 then 0 else
+        if fs1 == fs2 then 0 else
           match fs1, fs2 with
           | FUntyped r1, FUntyped r2 -> begin
               (* assumes the function ids have already been associated if these are recursive *)
@@ -735,8 +750,7 @@ module Expr = struct
         Format.sprintf "%s -> (%s)" p_eval hd_eval
       in
       Format.sprintf "match %s with \n| %s \nend"
-        subject_eval (String.concat ~sep:"\n| "
-                        (List.map patterns ~f:patterns_eval))
+        subject_eval (String.concat "\n| " (List.map patterns_eval patterns))
     | EProject { record ; label } ->
       let label_eval = RecordLabel.to_string label in
       let record_eval = ppp_gt record in
@@ -744,7 +758,7 @@ module Expr = struct
     | ERecord record ->
       RecordLabel.record_body_to_string ~sep:"=" record to_string
     | EModule m ->
-      "struct\n" ^ String.concat ~sep:"\n\n" (List.map m ~f:(statement_to_string)) ^ "\nend"
+      "struct\n" ^ String.concat "\n\n" (List.map statement_to_string m) ^ "\nend"
     | ENot e ->
       Format.sprintf "not %s" (ppp_ge e)
     | EInput -> "input"
@@ -767,8 +781,8 @@ module Expr = struct
     | EPick_b -> "#pick_b"
     | ECase { subject; cases ; default } -> (* simply sugar for nested conditionals *)
       let subject_eval = to_string subject in
-      let cases_eval = String.concat ~sep:"\n| "
-        @@ (List.map ~f:(fun (num, case) -> Format.sprintf "%d -> %s" num (to_string case))) cases in
+      let cases_eval = String.concat "\n| "
+        @@ (List.map (fun (num, case) -> Format.sprintf "%d -> %s" num (to_string case))) cases in
       let default_eval = Format.sprintf "\n| %s\n" (to_string default) in
       Format.sprintf "#case %s of %s%s" subject_eval cases_eval default_eval
     | EUntouchable e ->
@@ -777,7 +791,7 @@ module Expr = struct
     | EAbort e -> Format.sprintf "#abort %s" e  (* string is error message *)
     | EVanish _ -> "#vanish"
     (* only the desugared language *)
-    | EGen e' -> 
+    | EGen e' ->
       (* Cannot be interpreted. Is only an intermediate step in translation *)
       Format.sprintf "#gen %s" (ppp_ge e')
     (* these exist in the bluejay and desugared languages *)
@@ -791,10 +805,10 @@ module Expr = struct
       RecordLabel.record_body_to_string ~sep:":" record to_string
     | ETypeModule ls -> (* is a list because order matters *)
       Format.sprintf "sig %s end"
-        (String.concat ~sep:" " @@
-          List.map ls ~f:(fun (label, expr) ->
-              Format.sprintf "val %s : %s"
-                (RecordLabel.to_string label) (to_string expr)))
+        (String.concat " " @@
+          List.map (fun (label, expr) ->
+            Format.sprintf "val %s : %s" (RecordLabel.to_string label) (to_string expr)
+          ) ls)
     | ETypeFun { domain ; codomain ; dep } ->
       let arg1 = match dep with
         | `Binding Ident s -> Format.sprintf "(%s : %s)" s (ppp_ge domain)
@@ -807,14 +821,15 @@ module Expr = struct
       Format.sprintf "{%s |%s}" tau_eval predicate_eval
     | ETypeMu { var = Ident s ; params ; body } ->
       Format.sprintf "mu %s. %s" (
-        s ^ " " ^ String.concat ~sep:" " @@
-        List.map params ~f:Ident.to_string)
-        (to_string body)
+        s ^ " " ^ String.concat " " (List.map Ident.to_string params)
+      ) (to_string body)
     | ETypeVariant variant_list ->
       Format.sprintf "| %s"
-        (String.concat ~sep: "\n| " @@
-          List.map variant_list ~f:(fun (VariantTypeLabel Ident s, tau) ->
-              Format.sprintf "`%s of %s" s (ppp_gt tau)))
+        (String.concat "\n| " @@
+          List.map (fun (VariantTypeLabel.VariantTypeLabel Ident s, tau) ->
+            Format.sprintf "`%s of %s" s (ppp_gt tau)
+          ) variant_list
+        )
     | ELetTyped { typed_var ; defn ; body ; typed_binding_opts } ->
       let {var = Ident x; tau} = typed_var in
       let opts_string =
@@ -830,7 +845,7 @@ module Expr = struct
     (* bluejay or type erased *)
     | EList list ->
       Format.sprintf "[%s]"
-        (String.concat ~sep:"; " @@ List.map ~f:to_string list)
+        (String.concat "; " @@ List.map to_string list)
     | EListCons (hd, tl)->
       Format.sprintf "%s::%s" (ppp_gt hd) (ppp_gt tl)
     | EAssert e ->
@@ -839,7 +854,7 @@ module Expr = struct
       Format.sprintf "assume %s" (ppp_ge e)
     | EMultiArgFunction { params ; body } ->
       let params_eval =
-        (String.concat ~sep:" " @@ List.map ~f:(fun (Ident s) -> s) params)
+        (String.concat " " @@ List.map Ident.to_string params)
       in
       Format.sprintf "(fun %s -> %s)" params_eval (ppp_gt body)
     | ELetFun {func; body} ->
@@ -847,18 +862,17 @@ module Expr = struct
         (funsig_to_string func) (to_string body)
     | ELetFunRec {funcs; body} ->
       Format.sprintf "let rec %s in %s"
-        (String.concat ~sep:"\nand " @@
-          List.map funcs ~f:(funsig_to_string))
+        (String.concat "\nand " @@ List.map funsig_to_string funcs)
         (to_string body)
     (* bluejay only *)
     | EAbstractType -> "abstract"
     | ETypeList -> "list"
     | ETypeIntersect ls ->
-      String.concat ~sep:" & " @@
-      List.map ls
-        ~f:(fun (VariantTypeLabel Ident s, tau1, tau2) ->
-            Format.sprintf "((`%s of %s) -> %s)"
-              s (ppp_ge tau1) (ppp_ge tau2))
+      String.concat " & " @@
+      List.map (fun (VariantTypeLabel.VariantTypeLabel Ident s, tau1, tau2) ->
+        Format.sprintf "((`%s of %s) -> %s)"
+          s (ppp_ge tau1) (ppp_ge tau2)
+      ) ls
 
   and statement_to_string : type a. a statement -> string = function
     | SUntyped { var ; defn } ->
@@ -877,19 +891,24 @@ module Expr = struct
         opts_string s (to_string tau) (to_string defn)
     (* bluejay only *)
     | SFun fsig -> "let " ^ funsig_to_string fsig
-    | SFunRec fsiglist -> "let rec " ^ String.concat ~sep:"\nand " (List.map fsiglist ~f:(funsig_to_string))
+    | SFunRec fsiglist -> "let rec " ^ String.concat "\nand " (List.map funsig_to_string fsiglist)
 
   and funsig_to_string : type a. a funsig -> string = function
     | FUntyped { func_id = Ident f ; params; defn } ->
-      f ^ " " ^ String.concat ~sep:" " (List.map params ~f:(fun x -> let Ident s = x in s)) ^ " = " ^ to_string defn
+      f ^ " " ^ String.concat " " (List.map Ident.to_string params) ^ " = " ^ to_string defn
     | FTyped func ->
       let { type_vars ; func_id = Ident f ; params ; ret_type ; defn } = func in
-      let vars_eval = if List.length type_vars = 0 then "" else Format.sprintf "(type %s)" (String.concat ~sep:" " (List.map type_vars ~f:(fun x ->
-          let Ident s = x in s))) in
-      let params_eval = String.concat ~sep:" " (List.map params ~f:(fun x ->
+      let vars_eval =
+        match type_vars with
+        | [] -> ""
+        | _ ->
+          Format.sprintf "(type %s)" (String.concat " " (List.map Ident.to_string type_vars))
+      in
+      let params_eval = String.concat " " (List.map (fun x ->
           match x with
           | TVar {var = Ident s; tau} -> Format.sprintf "(%s : %s)" s (to_string tau)
-          | TVarDep {var = Ident s; tau} -> Format.sprintf "(dependent %s : %s)" s (to_string tau))) in
+          | TVarDep {var = Ident s; tau} -> Format.sprintf "(dependent %s : %s)" s (to_string tau)) params)
+      in
       let ret_eval = to_string ret_type in
       let defn_eval = to_string defn in
       Format.sprintf "%s %s %s : %s = %s" f vars_eval params_eval ret_eval defn_eval
@@ -964,10 +983,11 @@ module Parsing_tools = struct
   let new_record = RecordLabel.Map.singleton
 
   let add_record_entry k value old_record =
-    match Map.add old_record ~key:k ~data:value with
-    | `Duplicate -> failwith "Parse error: duplicate record label"
-    | `Ok m -> m
+    RecordLabel.Map.update k (function
+    | Some _ -> failwith "Parse error: duplicate record label"
+    | None -> Some value
+    ) old_record
 
   let record_of_list ls =
-    List.fold ls ~init:empty_record ~f:(fun acc (k, v) -> add_record_entry k v acc)
+    List.fold_left (fun acc (k, v) -> add_record_entry k v acc) empty_record ls
 end

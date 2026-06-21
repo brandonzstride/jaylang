@@ -8,22 +8,17 @@ homepage: "https://github.com/JHU-PL-Lab/jaylang"
 bug-reports: "https://github.com/JHU-PL-Lab/jaylang/issues"
 depends: [
   "dune" {>= "3.19"}
-  "core"
-  "core_unix"
   "alcotest" {with-test}
-  "menhir"
-  "lwt"
-  "landmarks"
-  "landmarks-ppx"
-  "alcotest"
   "baby"
-  "psq"
-  "preface"
-  "mtime"
+  "cmdliner" {>= "2.0"}
+  "menhir" {>= "20180523"}
   "moonpool"
+  "mtime"
+  "ppx_deriving" {>= "3.2"}
+  "preface"
+  "psq"
   "vector"
   "z3"
-  "ppx_deriving" {>= "3.2"}
   "odoc" {with-doc}
 ]
 build: [

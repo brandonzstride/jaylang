@@ -17,7 +17,7 @@ module type S = sig
       options:Options.t ->
       do_wrap:bool ->
       do_type_splay:Translate.Splay.t ->
-      Core.Filename.t ->
+      string ->
       Status.Terminal.t * tape
     (** Performs concolic evaluation on the program in the provided file or times
         out if the timeout limit was exceeded.  The result is printed to stdout. *)

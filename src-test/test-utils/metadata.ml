@@ -1,12 +1,12 @@
 (**
   Module [Metadata].
 
-  This is one module to contain the full test medatadata for 
+  This is one module to contain the full test medatadata for
   a Bluejay test program.
 
   The metadata is stored in a comment at the top of the Bluejay
   file as follows
-  
+
     (***
       (
         (features (<test feature list>))
@@ -30,13 +30,13 @@
 open Core
 
 module Test_speed = struct
-  type t = Fast | Slow [@@deriving sexp] 
+  type t = Fast | Slow [@@deriving sexp]
 end
 
 module Typing = struct
   type t = Well_typed | Ill_typed | Exhausted [@@deriving sexp]
   (*
-    Well-typed : no error gets found 
+    Well-typed : no error gets found
     Ill-typed  : some error gets found
     Exhausted  : the program is proven well-typed by exhausting all paths
   *)
@@ -57,26 +57,26 @@ end
 
 
 type t =
-  { features : Ttag.V2.t list  [@default []]
-  ; reasons  : Ttag.V2.t list  [@default []]
+  { features : Ttag.t list  [@default []]
+  ; reasons  : Ttag.t list  [@default []]
   ; speed    : Test_speed.t [@default Fast]
   ; typing   : Typing.t     [@default Exhausted]
   ; flags    : Flags.t [@default [||]]
   } [@@deriving sexp]
 
-let tags_of_t (r : t) : [ `Sorted_list of [ `Feature of Ttag.V2.t | `Reason of Ttag.V2.t | `Absent ] list ] =
+let tags_of_t (r : t) : [ `Sorted_list of [ `Feature of Ttag.t | `Reason of Ttag.t | `Absent ] list ] =
   `Sorted_list (
-    Ttag.V2.all
+    Ttag.all
     |> List.map ~f:(fun tag ->
-      let mem ls = List.mem ls tag ~equal:Ttag.V2.equal in
+      let mem ls = List.mem ls tag ~equal:Ttag.equal in
       if mem r.reasons
       then begin
         (* first need to assert that features are a subset of reasons *)
         if not @@ mem r.features
-        then failwith @@ Format.sprintf "Tag %s found in reasons but not features" (Ttag.V2.to_name tag)
+        then failwith @@ Format.sprintf "Tag %s found in reasons but not features" (Ttag.to_name tag)
         else `Reason tag
       end
-      else 
+      else
         if mem r.features
         then `Feature tag
         else `Absent

@@ -1,5 +1,4 @@
 
-open Core
 open Concolic.Common
 
 module Driver = Concolic.Driver.Of_logger (Utils.Logger.Transformer_of_builder (Utils.Dlist.Specialize (Stat)))
@@ -14,7 +13,7 @@ module Report_row (* : Latex_table.ROW *) = struct
   end
 
   type t =
-    { testname    : Filename.t
+    { testname    : string (* file name *)
     ; test_result : Status.Terminal.t
     ; interp_time : Mtime.Span.t
     ; solve_time  : Mtime.Span.t
@@ -29,12 +28,12 @@ module Report_row (* : Latex_table.ROW *) = struct
     let span_to_ms_string =
       fun span ->
         let fl = Utils.Time.span_to_ms span in
-        Float.to_string @@ Float.round_decimal fl ~decimal_digits:2
+        Float.to_string @@ Core.Float.round_decimal fl ~decimal_digits:2
         (* if Float.(fl < 1.)
         then Float.round_decimal fl ~decimal_digits:2
         else Float.round_significant fl ~significant_digits:2 *)
     in
-    [ Filename.basename x.testname |> String.take_while ~f:(Char.(<>) '.') |> Latex_format.texttt
+    [ Filename.basename x.testname |> Core.String.take_while ~f:((<>) '.') |> Latex_format.texttt
     ; span_to_ms_string x.interp_time
     ; span_to_ms_string x.solve_time
     ; span_to_ms_string x.total_time
@@ -43,7 +42,7 @@ module Report_row (* : Latex_table.ROW *) = struct
   let of_testname
       (n_trials : int)
       (runtest : Lang.Ast.some_program -> Status.Terminal.t * tape)
-      (testname : Filename.t)
+      (testname : string)
     : t list =
     assert (n_trials > 0);
     let metadata = Metadata.of_bjy_file testname in
@@ -70,12 +69,9 @@ module Report_row (* : Latex_table.ROW *) = struct
       in
       row
     in
-    let trials = List.init n_trials ~f:test_one in
-    let avg_trial =
-      List.fold
-        trials
-        ~init:{
-          testname
+    let trials = List.init n_trials test_one in
+    let init =
+        { testname
         ; test_result = Status.Exhausted_pruned_tree (* just arbitrary initial result *)
         ; interp_time = Mtime.Span.zero
         ; solve_time = Mtime.Span.zero
@@ -83,18 +79,22 @@ module Report_row (* : Latex_table.ROW *) = struct
         ; trial = Average
         ; metadata
         }
-        ~f:(fun acc x ->
-            { acc with (* sum up *)
-              test_result = x.test_result (* keeps most recent test result *)
-            ; interp_time = Mtime.Span.add acc.interp_time x.interp_time
-            ; solve_time = Mtime.Span.add acc.solve_time x.solve_time
-            ; total_time = Mtime.Span.add acc.total_time x.total_time
-            })
-      |> fun r ->
-      { r with (* average out *)
-        interp_time = Utils.Time.divide_span r.interp_time n_trials
-      ; solve_time = Utils.Time.divide_span r.solve_time n_trials
-      ; total_time = Utils.Time.divide_span r.total_time n_trials
+    in
+    let result =
+      List.fold_left (fun acc x ->
+        { acc with (* sum up *)
+          test_result = x.test_result (* keeps most recent test result *)
+        ; interp_time = Mtime.Span.add acc.interp_time x.interp_time
+        ; solve_time = Mtime.Span.add acc.solve_time x.solve_time
+        ; total_time = Mtime.Span.add acc.total_time x.total_time
+        }
+      ) init trials
+    in
+    let avg_trial =
+      { result with (* average out *)
+        interp_time = Utils.Time.divide_span result.interp_time n_trials
+      ; solve_time = Utils.Time.divide_span result.solve_time n_trials
+      ; total_time = Utils.Time.divide_span result.total_time n_trials
       }
     in
     trials @ [ avg_trial ]
@@ -106,21 +106,23 @@ module Result_table = struct
   let of_dirs
       ?(avg_only : bool = true)
       (n_trials : int)
-      (dirs : Filename.t list)
+      (dirs : string list)
       (runtest : Lang.Ast.some_program -> Status.Terminal.t * tape)
     : t =
-    let open List.Let_syntax in
     { row_module = (module Report_row)
-    ; rows =
+    ; rows = begin
+      let (>>|) x f = List.map f x in
+      let (>>=) x f = List.concat_map f x in
         dirs
         |> Utils.File_utils.get_all_bjy_files
-        |> List.sort ~compare:(fun a b -> String.compare (Filename.basename a) (Filename.basename b))
+        |> List.sort (fun a b -> String.compare (Filename.basename a) (Filename.basename b))
         >>= Report_row.of_testname n_trials runtest
-        |> List.filter ~f:(fun (row : Report_row.t) ->
+        |> List.filter (fun (row : Report_row.t) ->
             not avg_only || match row.trial with Average -> true | _ -> false
           )
         >>| Latex_tbl.Row_or_hline.return
         |> List.cons Latex_tbl.Row_or_hline.Hline
+      end
     ; columns =
         let little_space = Latex_tbl.Col_option.Little_space { point_size = 3 } in
         [ [ Latex_tbl.Col_option.Right_align ; Vertical_line_to_right ]
@@ -147,10 +149,10 @@ let run () =
   let+ options = Options.cmd_arg_term
   and+ `Do_wrap do_wrap, `Do_type_splay do_type_splay = Translate.Convert.cmd_arg_term
   and+ n_trials, dirs, (*mode,*) hum = cbench_args in
-  let oc_null = Out_channel.create "/dev/null" in
+  let oc_null = Out_channel.open_bin "/dev/null" in
   Format.set_formatter_out_channel oc_null;
   let runtest pgm =
-    (* let test_program = 
+    (* let test_program =
       match mode with
       | `Eager -> Driver.Eager.test_some_program
       | `Deferred -> Driver.Eager.test_some_program
@@ -163,29 +165,27 @@ let run () =
   in
   let tbl = Result_table.of_dirs n_trials dirs runtest in
   let times =
-    List.filter_map tbl.rows ~f:(function
-        | Row row -> Some (Utils.Time.span_to_ms row.total_time)
-        | Hline -> None
-      )
+    List.filter_map (function
+      | Latex_tbl.Row_or_hline.Row row ->
+        Some (Utils.Time.span_to_ms row.Report_row.total_time)
+      | Hline -> None
+      ) tbl.rows
+    |> List.sort Float.compare
   in
   let mean =
-    let total = List.fold times ~init:0.0 ~f:(+.) in
+    let total = List.fold_left (+.) 0.0 times in
     total /. Int.to_float (List.length times)
   in
   let median =
-    List.sort times ~compare:Float.compare
-    |> Fn.flip List.nth_exn (List.length times / 2)
+    List.nth times (List.length times / 2)
   in
   Format.set_formatter_out_channel Out_channel.stdout;
   tbl
   |> Latex_tbl.show ~hum
   |> Format.printf "%s\n";
-  Format.printf "Mean time of all tests: %fms\nMedian time of all tests: %fms\n" 
-    mean 
+  Format.printf "Mean time of all tests: %fms\nMedian time of all tests: %fms\n"
+    mean
     median
-  (* Format.printf "Total interpretation time: %fs\nTotal solving time: %fs\n"
-    (Utils.Safe_cell.get Concolic.Evaluator.global_runtime) 
-    (Utils.Safe_cell.get Concolic.Evaluator.global_solvetime) *)
 
 (*
   Common directories to benchmark include

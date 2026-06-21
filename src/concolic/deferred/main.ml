@@ -1,11 +1,10 @@
 
 (* Concolic main *)
 
-open Core
 open Lang.Ast
 open Common
 
-type 'a res =  
+type 'a res =
   | V of 'a Value.v
   | E of Effects.Err.t
 
@@ -47,7 +46,7 @@ let deferred_interp expr input_feeder ~max_step =
         | BDivide      , VInt (n1, e1)  , VInt (n2, e2) when n2 <> 0 -> k (v_int (n1 / n2)) e1 e2 Divide
         | BModulus     , VInt (n1, e1)  , VInt (n2, e2) when n2 <> 0 -> k (v_int (n1 mod n2)) e1 e2 Modulus
         | BEqual       , VInt (n1, e1)  , VInt (n2, e2)              -> k (v_bool (n1 = n2)) e1 e2 Equal
-        | BEqual       , VBool (b1, e1) , VBool (b2, e2)             -> k (v_bool Bool.(b1 = b2)) e1 e2 Equal
+        | BEqual       , VBool (b1, e1) , VBool (b2, e2)             -> k (v_bool (b1 = b2)) e1 e2 Equal
         | BNeq         , VInt (n1, e1)  , VInt (n2, e2)              -> k (v_bool (n1 <> n2)) e1 e2 Not_equal
         | BLessThan    , VInt (n1, e1)  , VInt (n2, e2)              -> k (v_bool (n1 < n2)) e1 e2 Less_than
         | BLeq         , VInt (n1, e1)  , VInt (n2, e2)              -> k (v_bool (n1 <= n2)) e1 e2 Less_than_eq
@@ -67,7 +66,7 @@ let deferred_interp expr input_feeder ~max_step =
         let* v = stern_eval record in
         match v with
         | VRecord body | VModule body -> begin
-            match Map.find body label with
+            match RecordLabel.Map.find_opt label body with
             | Some v -> return (Value.cast_up v)
             | None -> type_mismatch @@ Error_msg.project_missing_label label v
           end
@@ -77,12 +76,12 @@ let deferred_interp expr input_feeder ~max_step =
     | EMatch { subject ; patterns  } -> begin
         let* v = stern_eval subject in
         match
-          List.find_map patterns ~f:(fun (pat, body) ->
+          List.find_map (fun (pat, body) ->
               match Value.matches v pat with
               | `Matches -> Some (body, fun x -> x)
               | `Matches_with (v', id) -> Some (body, Env.add id v')
               | `No_match -> None
-            )
+            ) patterns
         with
         | Some (e, f) -> local f (k e)
         | None -> type_mismatch @@ Error_msg.pattern_not_found patterns v
@@ -98,18 +97,18 @@ let deferred_interp expr input_feeder ~max_step =
         | v -> type_mismatch @@ Error_msg.cond_non_bool v
       end
     | ECase { subject ; cases ; default } -> begin
-        let int_cases = List.map cases ~f:Tuple2.get1 in
+        let int_cases = List.map fst cases in
         let* v = stern_eval subject in
         match v with
         | VInt (i, e_i) -> begin
             (* let* () = incr_time in *) (* time is not actually needed in practice on branches *)
-            let body_opt = List.find_map cases ~f:(fun (i', body) -> if i = i' then Some body else None) in
+            let body_opt = List.find_map (fun (i', body) -> if i = i' then Some body else None) cases in
             match body_opt with
-            | Some body -> 
-              let not_in = List.filter int_cases ~f:((<>) i) in
+            | Some body ->
+              let not_in = List.filter ((<>) i) int_cases in
               let* () = push_branch (Direction.Int_direction { dir = Case_int i ; formula = e_i ; not_in }) in
               k body
-            | None -> 
+            | None ->
               let* () = push_branch (Direction.Int_direction { dir = Case_default ; formula = e_i ; not_in = int_cases }) in
               k default
           end
@@ -126,18 +125,18 @@ let deferred_interp expr input_feeder ~max_step =
         let* v = stern_eval func in
         match v with
         | VFunClosure { param ; closure } ->
-          let* v = eval arg in 
+          let* v = eval arg in
           local (fun _ -> Env.add param v closure.env) (k closure.body)
         | v -> type_mismatch @@ Error_msg.bad_appl v
       end
     (* modules, records, and variants  *)
     | ERecord label_map ->
       let* value_record_body =
-        Map.fold label_map ~init:(return Lang.Ast.RecordLabel.Map.empty) ~f:(fun ~key ~data:e acc_m ->
+        RecordLabel.Map.fold (fun key e acc_m ->
             let* acc = acc_m in
             let* v = eval e in
-            return @@ Map.set acc ~key ~data:v
-          )
+            return @@ RecordLabel.Map.add key v acc
+          ) label_map (return RecordLabel.Map.empty)
       in
       return @@ VRecord value_record_body
     | EVariant { label ; payload } ->
@@ -151,12 +150,12 @@ let deferred_interp expr input_feeder ~max_step =
             let* acc = acc_m in
             let* v = eval defn in
             local (Env.add var v) (
-              fold_stmts (return @@ Map.set acc ~key:(Lang.Ast.RecordLabel.RecordLabel var) ~data:v) tl
+              fold_stmts (return @@ RecordLabel.Map.add (Lang.Ast.RecordLabel.RecordLabel var) v acc) tl
             )
         in
         fold_stmts (return Lang.Ast.RecordLabel.Map.empty) stmt_ls
       in
-      return @@ VModule module_body 
+      return @@ VModule module_body
     | EUntouchable e ->
       let* v = eval e in
       return (VUntouchable v)
@@ -174,7 +173,7 @@ let deferred_interp expr input_feeder ~max_step =
     proofs on stern evals. This one is very direct, and it does (most of the time)
     the minimal amount of work to get to whnf.
   *)
-  and stern_eval (expr : Embedded.t) : Value.whnf m = 
+  and stern_eval (expr : Embedded.t) : Value.whnf m =
     match expr with
     | EDefer body -> stern_eval body (* When sternly evaluating a deferred thing, we can just directly eval the thing *)
     | _ ->
@@ -188,12 +187,12 @@ let deferred_interp expr input_feeder ~max_step =
             | Some v -> return v
             | None -> map_deferred_proof sym stern_eval
           )
-        ~whnf:(fun v -> 
+        ~whnf:(fun v ->
             let* () = optionally_map_some_deferred_proof stern_eval in
             return v
           )
 
-  (* 
+  (*
     This does not monadically error.
     Any error is packed into Res, so there is no implicit error propagation.
     This is helpful because we don't want errors propagating and messing with
