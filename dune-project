@@ -30,6 +30,7 @@
   ppx_jane
   preface
   psq
+  (sexplib :with-test)
   z3
   ))
 

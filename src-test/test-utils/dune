@@ -8,7 +8,7 @@
   (name metadata)
   (modules metadata)
   (libraries
-    core
+    sexplib
     ttag)
   (preprocess (pps ppx_jane))
 )

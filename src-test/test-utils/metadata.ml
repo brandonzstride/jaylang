@@ -27,6 +27,8 @@
   they are the reasons for the error, which does not exist.
 *)
 
+open Sexplib.Conv
+
 module Test_speed = struct
   type t = Fast | Slow [@@deriving sexp]
 end
@@ -45,21 +47,20 @@ module Flags = struct
 
   (* We dont want to write flags as an array. Just a string is fine *)
   let sexp_of_t flags =
-    Core.String.sexp_of_t (String.concat " " (Array.to_list flags))
+    sexp_of_string (String.concat " " (Array.to_list flags))
 
   let t_of_sexp sexp =
-    let str = Core.String.t_of_sexp sexp in
+    let str = string_of_sexp sexp in
     let parts = String.split_on_char ' ' str |> List.filter (fun s -> not (String.is_empty s)) in
     Array.of_list parts
 end
 
-
 type t =
-  { features : Ttag.t Core.List.t  [@default []]
-  ; reasons  : Ttag.t Core.List.t  [@default []]
+  { features : Ttag.t list  [@default []]
+  ; reasons  : Ttag.t list  [@default []]
   ; speed    : Test_speed.t [@default Fast]
   ; typing   : Typing.t     [@default Exhausted]
-  ; flags    : Flags.t [@default [||]]
+  ; flags    : Flags.t      [@default [||]]
   } [@@deriving sexp]
 
 let tags_of_t (r : t) : [ `Sorted_list of [ `Feature of Ttag.t | `Reason of Ttag.t | `Absent ] list ] =
@@ -93,5 +94,5 @@ let of_bjy_file (bjy_filename : string) : t =
     Some (String.sub file_content i n)
   in
   Option.value s_opt ~default:"()"
-  |> Core.Sexp.of_string
+  |> Sexplib.Sexp.of_string
   |> t_of_sexp
