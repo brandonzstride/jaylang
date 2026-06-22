@@ -31,11 +31,9 @@ type _ Effect.t += Check_timeout : unit Effect.t
 
 let yield_to_timer () = Effect.perform Check_timeout
 
-let with_timeout span f a =
+let with_timeout span f =
   let timer = Mtime_clock.counter () in
-  try
-    Ok (f a)
-  with
+  try Ok (f ()) with
   | effect Check_timeout, k ->
     let t = Mtime_clock.count timer in
     if Mtime.Span.is_longer t ~than:span then

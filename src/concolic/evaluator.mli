@@ -17,8 +17,8 @@ end
   The parallel would be to pass in a log transformer.
   (But I should just pass in a made target queue and pull the k from that!)
 *)
-module Make : functor (K : Smt.Symbol.KEY) (_ : Target_queue.MAKE) (P : Pause.S)
-  (Log : Utils.Logger.FULL with type B.a = Stat.t and type 'a M.m = 'a P.m) -> sig
+module Make : functor (K : Smt.Symbol.KEY) (_ : Target_queue.MAKE)
+  (Log : Utils.Logger.FULL with type B.a = Stat.t) -> sig
   val c_loop : options:Options.t -> K.t eval -> K.t Smt.Solve.solver
     -> Lang.Ast.Embedded.t -> Status.Terminal.t Log.m
   (** [c_loop ~options eval pgm] is the result of concolic looping on [pgm] using

@@ -41,4 +41,4 @@ end
 (* No logging -- anything logged is just ignored, and the final tape is () *)
 include S with type tape = unit
 
-module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with type tape = T.tape
+module Of_logger (Log : Utils.Logger.FULL with type B.a = Stat.t) : S with type tape = Log.tape

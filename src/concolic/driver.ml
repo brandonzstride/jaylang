@@ -32,8 +32,8 @@ module type S = sig
   include DRIVER (* Is Default *)
 end
 
-module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with type tape = T.tape = struct
-  type tape = T.tape
+module Of_logger (Log : Utils.Logger.FULL with type B.a = Stat.t) : S with type tape = Log.tape = struct
+  type tape = Log.tape
 
   module type DRIVER = sig
     val test_some_program :
@@ -56,9 +56,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
   module Make (Key : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE)
     (C : Evaluator.EVAL with type k := Key.t) () : DRIVER = struct
 
-    module Log = T.Transform (Pause.Id)
-
-    module Eval = Evaluator.Make (Key) (Make_tq) (Pause.Id) (Log)
+    module Eval = Evaluator.Make (Key) (Make_tq) (Log)
 
     let solve = Smt.Solve.main_solve (module Overlays.Typed_z3.Default)
 
@@ -71,9 +69,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
     let test_with_timeout
       : options:Options.t -> Lang.Ast.Embedded.t -> Status.Terminal.t * tape
       = fun ~options prog ->
-      let main = Eval.c_loop ~options C.ceval solve prog in
-      try Log.run main with
-      | _ -> Status.Timeout, T.B.empty (* FIXME: timeout doesn't provide stats *)
+      Eval.c_loop ~options C.ceval solve prog
 
     module Compute (O : sig val options : Options.t end) = struct
       module Compute_result = struct
@@ -218,4 +214,4 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
   include Default
 end
 
-include Of_logger (Utils.Logger.Transformer_of_builder (Stat.Unit_builder))
+include Of_logger (Utils.Logger.From_builder (Stat.Unit_builder))

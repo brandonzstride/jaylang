@@ -1,7 +1,7 @@
 
 open Concolic.Common
 
-module Driver = Concolic.Driver.Of_logger (Utils.Logger.Transformer_of_builder (Utils.Dlist.Specialize (Stat)))
+module Driver = Concolic.Driver.Of_logger (Utils.Logger.From_builder (Utils.Dlist.Specialize (Stat)))
 
 type tape = Driver.tape
 

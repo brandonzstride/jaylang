@@ -38,8 +38,8 @@ let make_targets (target : 'k Target.t) (final_path : 'k Path.t)
         )
     ) (fun (acc, _) -> acc, `Pruned false) ([], target) stem
 
-module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S)
-  (Log : Utils.Logger.FULL with type B.a = Stat.t and type 'a M.m = 'a P.m) = struct
+module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE)
+  (Log : Utils.Logger.FULL with type B.a = Stat.t) = struct
   module Tq = Make_tq (K)
 
   open Log
@@ -51,13 +51,13 @@ module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S)
     ~(max_tree_depth : int) ~(max_step : Interp_common.Step.t) : Status.Terminal.t Log.m =
     let is_first_interp = ref true in
     let rec loop tq =
-      let* () = upper @@ P.pause () in
+      let () = Utils.Time.yield_to_timer () in
       match Tq.pop tq with
       | Some (target, tq) -> begin
           let solve_span, solve_result = Utils.Time.time solve (Target.to_formula target) in
           let* () = log @@ Time (Solve_time, solve_span) in
           let* () = log @@ Count (N_solves, 1) in
-          let* () = upper @@ P.pause () in
+          let () = Utils.Time.yield_to_timer () in
           match solve_result with
           | Sat model -> loop_on_model target tq model
           | Unknown -> let* a = loop tq in return (Status.min Unknown a)
@@ -105,12 +105,17 @@ module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S)
       (e : Lang.Ast.Embedded.t) : Status.Terminal.t Log.m =
     if not options.is_random then Interp_common.Rand.reset ();
     let lifted_timeout t f =
-      let* (a, tape) = Log.map_t (fun m ->
-          P.bind m (fun () -> P.with_timeout t f)
-        ) (return ())
+      let* x = Log.bind (return ()) (fun () ->
+          Log.return (Utils.Time.with_timeout t f)
+        )
       in
-      let* () = Log.tell tape in
-      return a
+      match x with
+      | Ok (a, tape) ->
+        let* () = Log.tell tape in
+        return a
+      | Error _ ->
+        (* FIXME: missing the tape here *)
+        return Status.Timeout
     in
     lifted_timeout options.global_timeout @@ fun () ->
       let empty_tq = Tq.make options in
