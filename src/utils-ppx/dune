@@ -4,6 +4,6 @@
  (libraries core ppxlib)
  (kind ppx_rewriter)
  (preprocess
-  (pps ppx_deriving.std ppxlib.metaquot)
+  (pps ppxlib.metaquot)
  )
 )
