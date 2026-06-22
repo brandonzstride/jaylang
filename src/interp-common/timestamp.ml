@@ -51,45 +51,37 @@ module PerfectHash : S = struct
 
   let invalid = -1 (* sentinel for uninitialized indices *)
 
-  let table : entry Vector.t =
-    (* Create vector *)
-    let v =
-      Vector.create
-        ~dummy:({pushed=invalid; incremented=invalid; time=[]})
-    in
-    (* Initialize first timestamp *)
-    Vector.push v {pushed=invalid; incremented=invalid; time=[1]};
-    v
-  ;;
+  let table : entry Dynarray.t =
+    Dynarray.make 1 {pushed=invalid; incremented=invalid; time=[1]}
 
   let initial = 0 (* first timestamp is already initialized *)
 
   let push (time : t) : t =
-    let entry = Vector.get table time in
+    let entry = Dynarray.get table time in
     if entry.pushed <> invalid then entry.pushed else begin
       let entry' = {pushed=invalid; incremented=invalid; time=1::entry.time} in
-      let entry'_idx = Vector.length table in
-      Vector.push table entry';
+      let entry'_idx = Dynarray.length table in
+      Dynarray.add_last table entry';
       entry.pushed <- entry'_idx;
       entry'_idx
     end
 
   let increment (time : t) : t =
-    let entry = Vector.get table time in
+    let entry = Dynarray.get table time in
     if entry.incremented <> invalid then entry.incremented else begin
       let time' = match entry.time with
         | x::xs -> (x+1)::xs
         | [] -> failwith "Invariant broken: empty time list"
       in
       let entry' = {pushed=invalid; incremented=invalid; time=time'} in
-      let entry'_idx = Vector.length table in
-      Vector.push table entry';
+      let entry'_idx = Dynarray.length table in
+      Dynarray.add_last table entry';
       entry.incremented <- entry'_idx;
       entry'_idx
     end
 
   let to_string (time : t) : string =
-    let entry = Vector.get table time in
+    let entry = Dynarray.get table time in
     String.concat "." (List.rev_map string_of_int entry.time)
 
   let uid x = x

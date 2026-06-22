@@ -2,7 +2,6 @@
  (name interp_common)
  (public_name jay.interp_common)
  (libraries
-  vector
   utils
   lang
   overlays

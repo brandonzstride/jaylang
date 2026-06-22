@@ -28,7 +28,6 @@
   (ocaml (>= 5.5))
   preface
   psq
-  vector
   z3
   ))
 
