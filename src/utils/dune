@@ -4,7 +4,6 @@
  (name utils)
  (public_name jay.utils)
  (libraries
-  core_unix.sys_unix
   cmdliner
   preface
   mtime

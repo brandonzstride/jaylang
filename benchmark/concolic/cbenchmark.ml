@@ -24,14 +24,16 @@ module Report_row (* : Latex_table.ROW *) = struct
   let names =
     [ "Test Name" ; "Interp" ; "Solve" ; "Total" ; "LOC" ]
 
+  let round_decimal ~digits x =
+    let d = float_of_int digits in
+    let b = 10. ** d in
+    Float.round (x *. b) /. b
+
   let to_strings x =
     let span_to_ms_string =
       fun span ->
         let fl = Utils.Time.span_to_ms span in
-        Float.to_string @@ Core.Float.round_decimal fl ~decimal_digits:2
-        (* if Float.(fl < 1.)
-        then Float.round_decimal fl ~decimal_digits:2
-        else Float.round_significant fl ~significant_digits:2 *)
+        Float.to_string @@ round_decimal fl ~digits:2
     in
     [ Filename.basename x.testname |> String.take_first_while ((<>) '.') |> Latex_format.texttt
     ; span_to_ms_string x.interp_time

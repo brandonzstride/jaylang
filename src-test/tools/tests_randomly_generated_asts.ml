@@ -1,4 +1,3 @@
-open Core
 
 open Lang.Ast
 open Lang.Ast.Expr
@@ -43,9 +42,8 @@ let pick_bool ~(ctx : 'a context) : bool =
 
 let pick_from ~(ctx : 'a context) (options : 'b list) : 'b =
   let idx = pick_int ~ctx ~min:0 ~max:(List.length options) in
-  match List.nth options idx with
-  | Some x -> x
-  | None -> failwith "Invariant broken: pick_int returned invalid index"
+  try List.nth options idx with
+  | Failure _ -> failwith "Invariant broken: pick_int returned invalid index"
 
 let pick_char ~(ctx : 'a context) (options : char list) : char =
   pick_from ~ctx options
@@ -66,7 +64,7 @@ let pick_string
       ~min_len ~max_len ~ctx
       (fun () -> pick_char ~ctx ident_chars)
   in
-  String.of_char_list chars
+  String.of_seq (List.to_seq chars)
 
 let pick_ident
     ?(min_len:int=1) ?(max_len:int=5) ~(ctx : 'a context) () : Ident.t =
@@ -733,19 +731,19 @@ let make_tests_from_generators
 let make_rand_tests (trees_per_language : int) : unit Alcotest.test list =
   [ make_tests_from_generators
       ~test_name:"generated_bluejay_pp"
-      ~rand_state:(Random.State.make (Array.init 0 ~f:(fun _ -> 0)))
+      ~rand_state:(Random.State.make (Array.init 0 (fun _ -> 0)))
       bluejay_generators
       Lang.Parser.Bluejay.parse_single_pgm_string
       trees_per_language;
     make_tests_from_generators
       ~test_name:"generated_desugared_pp"
-      ~rand_state:(Random.State.make (Array.init 0 ~f:(fun _ -> 0)))
+      ~rand_state:(Random.State.make (Array.init 0 (fun _ -> 0)))
       desugared_generators
       Lang.Parser.Desugared.parse_single_pgm_string
       trees_per_language;
     make_tests_from_generators
       ~test_name:"generated_embedded_pp"
-      ~rand_state:(Random.State.make (Array.init 0 ~f:(fun _ -> 0)))
+      ~rand_state:(Random.State.make (Array.init 0 (fun _ -> 0)))
       embedded_generators
       Lang.Parser.Embedded.parse_single_pgm_string
       trees_per_language;

@@ -17,9 +17,6 @@
   included in the count (and note how it is only the ill-typed tests).
 *)
 
-open Core
-open List.Let_syntax
-
 module Tbl = struct
   module Row = struct
     type t =
@@ -42,24 +39,25 @@ module Tbl = struct
       ; Ttag.to_description x.tag ]
   end
 
-  let make_of_dirs (dirs : Filename.t list) : Row.t Latex_tbl.t =
+  let make_of_dirs (dirs : string list) : Row.t Latex_tbl.t =
     { row_module = (module Row)
     ; rows = begin
       dirs
       |> Utils.File_utils.get_all_bjy_files
-      >>| Metadata.of_bjy_file
-      >>| Metadata.tags_of_t
-      >>| (function `Sorted_list ls -> ls)
-      |> List.transpose_exn
-      |> List.zip_exn Ttag.all
-      >>| (fun (tag, ls) ->
-        List.fold ls ~init:Row.{ tag ; uses = 0 ; errs = 0 } ~f:(fun acc -> function
-          | `Absent -> acc
-          | `Feature t -> assert (Ttag.equal t tag); { acc with uses = acc.uses + 1 }
-          | `Reason t -> assert (Ttag.equal t tag); { acc with errs = acc.errs + 1 ; uses = acc.uses + 1 }
-          )
-      )
-      >>| Latex_tbl.Row_or_hline.return
+      |> List.map (fun file ->
+          match Metadata.tags_of_t (Metadata.of_bjy_file file) with
+          | `Sorted_list ls -> ls
+        )
+      |> Latex_tbl.transpose_grid
+      |> List.combine Ttag.all
+      |> List.map (fun (tag, ls) ->
+          List.fold_left (fun (acc : Row.t) -> function
+            | `Absent -> acc
+            | `Feature t -> assert (Ttag.equal t tag); { acc with uses = acc.uses + 1 }
+            | `Reason t -> assert (Ttag.equal t tag); { acc with errs = acc.errs + 1 ; uses = acc.uses + 1 }
+            ) { tag ; uses = 0 ; errs = 0 } ls
+        )
+      |> List.map Latex_tbl.Row_or_hline.return
       |> List.cons Latex_tbl.Row_or_hline.Hline
     end
     ; columns = [ [ Right_align ; Vertical_line_to_right ] ; [ Center ] ; [ Center ; Vertical_line_to_right ] ; [ Left_align ] ]
@@ -80,7 +78,7 @@ let () =
   ; "sato-bjy-ill-typed"  (* trivial errors *)
   ; "soft-contract-ill-typed"
   ]
-  >>| String.append "./test/bjy/"
+  |> List.map (String.cat "./test/bjy/")
   |> Tbl.make_of_dirs
   |> Latex_tbl.show
   |> Format.printf "%s\n"

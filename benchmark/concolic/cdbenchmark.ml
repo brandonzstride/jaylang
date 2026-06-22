@@ -25,16 +25,27 @@ module Basic_test = struct
   let names =
     [ " Test Name" ; "Interp Time" ; "Solve Time" ; "Total" ; "N-interps" ; "Mode" ]
 
+  let round_decimal ~digits x =
+    let d = float_of_int digits in
+    let order = 10. ** d in
+    Float.round (x *. order) /. order
+
+  let round_significant ~digits x =
+    let xd = int_of_float (Float.log10 x) + 1 in
+    let dd = float_of_int (digits - xd) in
+    let order = 10. ** dd in
+    Float.round (x *. order) /. order
+
   let to_strings x =
     let span_to_ms_string =
       fun span ->
         let fl = Utils.Time.span_to_ms span in
         Float.to_string @@
         if Float.compare fl 1. < 0
-        then Core.Float.round_decimal fl ~decimal_digits:2
-        else Core.Float.round_significant fl ~significant_digits:2
+        then round_decimal fl ~digits:2
+        else round_significant fl ~digits:2
     in
-    [ Filename.basename x.testname |> Core.String.take_while ~f:((<>) '.')
+    [ Filename.basename x.testname |> String.take_first_while ((<>) '.')
     ; span_to_ms_string x.interp_time
     ; span_to_ms_string x.solve_time
     ; span_to_ms_string x.total_time

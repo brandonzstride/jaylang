@@ -34,7 +34,7 @@
 (executable
  (name bjy_cloc)
  (modules bjy_cloc)
- (libraries core utils)
+ (libraries utils)
  (promote
   (until-clean)
   (into "../..")))

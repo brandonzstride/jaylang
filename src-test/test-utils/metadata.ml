@@ -27,8 +27,6 @@
   they are the reasons for the error, which does not exist.
 *)
 
-open Core
-
 module Test_speed = struct
   type t = Fast | Slow [@@deriving sexp]
 end
@@ -47,18 +45,18 @@ module Flags = struct
 
   (* We dont want to write flags as an array. Just a string is fine *)
   let sexp_of_t flags =
-    String.sexp_of_t (String.concat ~sep:" " (Array.to_list flags))
+    Core.String.sexp_of_t (String.concat " " (Array.to_list flags))
 
   let t_of_sexp sexp =
-    let str = String.t_of_sexp sexp in
-    let parts = String.split str ~on:' ' |> List.filter ~f:(fun s -> not (String.is_empty s)) in
+    let str = Core.String.t_of_sexp sexp in
+    let parts = String.split_on_char ' ' str |> List.filter (fun s -> not (String.is_empty s)) in
     Array.of_list parts
 end
 
 
 type t =
-  { features : Ttag.t list  [@default []]
-  ; reasons  : Ttag.t list  [@default []]
+  { features : Ttag.t Core.List.t  [@default []]
+  ; reasons  : Ttag.t Core.List.t  [@default []]
   ; speed    : Test_speed.t [@default Fast]
   ; typing   : Typing.t     [@default Exhausted]
   ; flags    : Flags.t [@default [||]]
@@ -67,8 +65,8 @@ type t =
 let tags_of_t (r : t) : [ `Sorted_list of [ `Feature of Ttag.t | `Reason of Ttag.t | `Absent ] list ] =
   `Sorted_list (
     Ttag.all
-    |> List.map ~f:(fun tag ->
-      let mem ls = List.mem ls tag ~equal:Ttag.equal in
+    |> List.map (fun tag ->
+      let mem ls = List.exists (Ttag.equal tag) ls in
       if mem r.reasons
       then begin
         (* first need to assert that features are a subset of reasons *)
@@ -83,15 +81,17 @@ let tags_of_t (r : t) : [ `Sorted_list of [ `Feature of Ttag.t | `Reason of Ttag
     )
   )
 
-let of_bjy_file (bjy_filename : Filename.t) : t =
-  let file_content = In_channel.read_all bjy_filename in (* may consider reading only a short portion to make this faster *)
+let of_bjy_file (bjy_filename : string) : t =
+  (* may consider reading only a short portion to make this next line faster *)
+  let file_content = In_channel.with_open_bin bjy_filename In_channel.input_all in
   let s_opt =
-    let open Option.Let_syntax in
-    let (let*) x f = Option.bind x ~f in
-    let* i0 = String.substr_index file_content ~pattern:"(***" in
-    let* i1 = String.substr_index file_content ~pos:i0 ~pattern:"*)" in
-    return (String.slice file_content (i0 + 4) i1)
+    let (let*) x f = Option.bind x f in
+    let* i0 = String.find_first file_content ~sub:"(***" in
+    let* i1 = String.find_first file_content ~start:i0 ~sub:"*)" in
+    let i = i0 + 4 in
+    let n = i1 - i in
+    Some (String.sub file_content i n)
   in
   Option.value s_opt ~default:"()"
-  |> Sexp.of_string
+  |> Core.Sexp.of_string
   |> t_of_sexp
