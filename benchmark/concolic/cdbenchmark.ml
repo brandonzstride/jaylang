@@ -194,6 +194,7 @@ let run () =
   let results = Latex_tbl.concat eager_results deferred_results in
   (* Testing is done, so we can set back the stdout channel *)
   Format.set_formatter_out_channel Out_channel.stdout;
+  Out_channel.close oc_null;
   results
   |> Latex_tbl.show ~hum:true
   |> Format.printf "\n%s\n"

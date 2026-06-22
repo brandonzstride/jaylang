@@ -1,4 +1,8 @@
 
+module type T = sig
+  type t
+end
+
 module type MONAD = sig
   type 'a m
   val return : 'a -> 'a m

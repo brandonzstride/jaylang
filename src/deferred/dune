@@ -2,7 +2,6 @@
  (name deferred)
  (public_name jay.deferred)
  (libraries
-  core
   lang
   concolic
   interp_common

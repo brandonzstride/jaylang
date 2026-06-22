@@ -4,7 +4,6 @@
  (name interpreter)
  (public_name jay.interpreter)
  (libraries
-  core
   utils
   lang
   interp_common

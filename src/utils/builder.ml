@@ -1,6 +1,4 @@
 
-open Core
-
 module type S = sig
   type a
   type t
@@ -17,14 +15,14 @@ module Unit_builder : S with type a = unit and type t = unit = struct
   let combine () () = ()
 end
 
-module Dlist_builder (A : T) : S with type a = A.t and type t = A.t Dlist.t = struct
-  type a = A.t 
+module Dlist_builder (A : Types.T) : S with type a = A.t and type t = A.t Dlist.t = struct
+  type a = A.t
   include Dlist
   type t = a Dlist.t
 end
 
-module List_builder (A : T) : S with type a = A.t and type t = A.t list = struct
-  type a = A.t 
+module List_builder (A : Types.T) : S with type a = A.t and type t = A.t list = struct
+  type a = A.t
   type t = a list
   let empty = []
   let cons a ls = a :: ls
@@ -36,7 +34,7 @@ end
   Note that BUILDER gives us MONOID:
 
   module type MONOID = sig
-    type t 
+    type t
     include S with type a := t and type t := t
   end
 

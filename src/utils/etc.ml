@@ -14,3 +14,13 @@ let compare_tup3 cmp_x cmp_y cmp_z (x1, y1, z1) (x2, y2, z2) =
       cy
   else
     cx
+
+let list_fold_until f finish init ls =
+  let rec go acc = function
+    | [] -> finish acc
+    | hd :: tl ->
+      match f acc hd with
+      | `Stop x -> x
+      | `Continue a -> go a tl
+  in
+  go init ls

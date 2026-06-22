@@ -4,6 +4,7 @@ open Ast
 open Pattern
 open Expr
 open Translation_tools
+module Etc = Utils.Etc
 open Ast_tools
 open Ast_tools.Utils
 
@@ -137,25 +138,26 @@ let uses_id (expr : Desugared.t) (id : Ident.t) : bool =
     | ERecord m -> RecordLabel.Map.exists (fun _ v -> loop v) m
     | ETypeRecord m -> RecordLabel.Map.exists (fun _ v -> loop v) m
     | EModule stmt_ls ->
-      Core.List.fold_until stmt_ls ~init:false ~f:(fun acc -> function
+      Etc.list_fold_until (fun acc -> function
           | SUntyped { var ; defn } ->
             let res = acc || loop defn in
             if Ident.equal var id
-            then Stop res
-            else Continue res
+            then `Stop res
+            else `Continue res
           | STyped { typed_var = { var ; tau } ; defn ; _ } ->
             let res = acc || loop defn || loop tau in
             if Ident.equal var id
-            then Stop res
-            else Continue res
-        ) ~finish:Fun.id
-    | ETypeModule m -> Core.List.fold_until m ~init:false ~f:(fun acc (label, e) ->
-        let RecordLabel label_id = label in
+            then `Stop res
+            else `Continue res
+        ) Fun.id false stmt_ls
+    | ETypeModule m ->
+      Etc.list_fold_until (fun acc (label, e) ->
+        let RecordLabel.RecordLabel label_id = label in
         let res = acc || loop e in
         if Ident.equal label_id id
-        then Stop res (* stop because id is bound to this label in later labels *)
-        else Continue res (* continue to check remaining labels after this *)
-      ) ~finish:Fun.id
+        then `Stop res (* stop because id is bound to this label in later labels *)
+        else `Continue res (* continue to check remaining labels after this *)
+      ) Fun.id false m
     | ETypeVariant ls -> List.exists (fun (_, e) -> loop e) ls
     | EMatch { subject ; patterns } -> loop subject || List.exists (fun (_, e) -> loop e) patterns
     | EIf { cond ; true_body ; false_body } -> loop cond || loop true_body || loop false_body

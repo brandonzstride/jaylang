@@ -13,7 +13,7 @@
 
 module type S = sig
   type 'a x
-  type t = 
+  type t =
     | I of int x
     | B of bool x
     [@@deriving compare]
@@ -21,9 +21,14 @@ module type S = sig
 end
 
 module Make (X : Comparable.S1) : S with type 'a x := 'a X.t = struct
-  open Core
   type t =
     | I of int X.t
     | B of bool X.t
-    [@@deriving compare]
+
+  let compare a b =
+    match a, b with
+    | I _, B _ -> -1
+    | B _, I _ -> 1
+    | I x1, I x2 -> X.compare Int.compare x1 x2
+    | B x1, B x2 -> X.compare Bool.compare x1 x2
 end

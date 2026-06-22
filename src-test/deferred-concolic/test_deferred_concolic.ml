@@ -1,9 +1,8 @@
-open Core
 open Utils
 
-let testcase_of_filename (testname : Filename.t) : unit Alcotest.test_case = 
+let testcase_of_filename (testname : string) : unit Alcotest.test_case =
   let metadata = Metadata.of_bjy_file testname in
-  let is_error_expected = 
+  let is_error_expected =
     match metadata.typing with
     | Ill_typed -> true
     | Well_typed | Exhausted -> false
@@ -20,19 +19,19 @@ let testcase_of_filename (testname : Filename.t) : unit Alcotest.test_case =
       | `Ok status -> Concolic.Common.Status.is_error_found status
       | `Exit i -> raise @@ Invalid_argument (Format.sprintf "Test couldn't evaluate and finished with exit code %d." i)
     end
-    |> Bool.(=) is_error_expected
+    |> Bool.equal is_error_expected
     |> Alcotest.check Alcotest.bool "bjy deferred concolic" true
 
 let root_dir = "test/bjy/"
 
 let make_tests (dirs : string list) : unit Alcotest.test list =
-  let open List.Let_syntax in
-  dirs >>| fun dirname -> 
+  List.map (fun dirname ->
     ( dirname
     , [ root_dir ^ dirname ]
       |> File_utils.get_all_bjy_files
-      >>| testcase_of_filename
+      |> List.map testcase_of_filename
     )
+  ) dirs
 
 let () =
   Alcotest.run "deferred concolic"
@@ -73,4 +72,4 @@ let () =
 
     ; "nondeterministic-types"
     ]
-    
+

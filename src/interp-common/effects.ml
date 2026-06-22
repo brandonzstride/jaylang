@@ -1,5 +1,4 @@
 
-open Core
 open Lang
 
 module type ENV = sig
@@ -14,7 +13,7 @@ end
   of the monad instead of utilizing the abstractions. This reduces the number of
   binds and improves efficiency.
 *)
-module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
+module Make (State : Utils.Types.T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     type t
     val fail_on_fetch : Ast.Ident.t -> State.t -> t * State.t
     val fail_on_max_step : int -> State.t -> t * State.t
@@ -23,9 +22,9 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
   let absurd (type a) (e : empty_err) : a =
     match e with _ -> . (* this function can never run *)
 
-  (* 
+  (*
     ------------
-    MONAD BASICS 
+    MONAD BASICS
     ------------
 
     CPS monad (mostly because it is an efficient way to error: just jump straight out instead
@@ -44,11 +43,11 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     "statefully" for efficiency.
   *)
   type ('a, 'e) t = {
-    run : 'r. 
-      reject:('e -> State.t -> Step.t -> Builder.t -> 'r) -> 
+    run : 'r.
+      reject:('e -> State.t -> Step.t -> Builder.t -> 'r) ->
       accept:('a -> State.t -> Step.t -> Builder.t -> 'r) ->
       State.t -> Step.t -> Builder.t -> Env.t -> 'r
-  } 
+  }
 
   let[@inline always][@specialise] bind (x : ('a, 'e) t) (f : 'a -> ('b, 'e) t) : ('b, 'e) t =
     { run =
@@ -112,7 +111,7 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
     { run = fun ~reject:_ ~accept state step b _ -> accept b state step b }
 
   let[@inline always][@specialize] log (a : Builder.a) : (unit, 'e) t =
-    { run = 
+    { run =
         fun ~reject:_ ~accept state step b _ ->
           accept () state step (Builder.cons a b)
     }
@@ -132,12 +131,15 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
   let[@inline always][@specialise] fail (e : Err.t) : 'a m =
     { run = fun ~reject ~accept:_ state step b _ -> reject e state step b }
 
-  let fail_map (f : State.t -> Err.t * State.t) : 'a m = 
-    { run = fun ~reject ~accept:_ state step b _ -> Tuple2.uncurry reject (f state) step b }
+  let fail_map (f : State.t -> Err.t * State.t) : 'a m =
+    { run = fun ~reject ~accept:_ state step b _ ->
+      let e, s = f state in
+      reject e s step b
+    }
 
   let[@inline always] handle_error (x : ('a, 'e1) t) (ok : 'a -> ('b, 'e2) t) (err : Err.t -> ('b, 'e2) t) : ('b, 'e2) t =
     { run = fun ~reject ~accept state step b e ->
-          x.run state step b e 
+          x.run state step b e
             ~reject:(fun a state step b ->
                 (err a).run ~reject ~accept state step b e
               )
@@ -153,11 +155,18 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
   *)
 
   (* May prefer to pass in only init_env, but init_read gives more flexibility *)
-  let run (x : 'a m) (init_state : State.t) (init_env : Env.t) : ('a, Err.t) result * State.t * Step.t * Builder.t =
-    x.run ~reject:(fun e state step b -> Error e, state, step, b) ~accept:(fun a state step b -> Ok a, state, step, b) init_state Step.zero Builder.empty init_env
+  let run (x : 'a m) (init_state : State.t) (init_env : Env.t)
+      : ('a, Err.t) result * State.t * Step.t * Builder.t =
+    x.run init_state Step.zero Builder.empty init_env
+      ~reject:(fun e state step b -> Error e, state, step, b)
+      ~accept:(fun a state step b -> Ok a, state, step, b)
 
-  let run_safe (x : 'a s) (init_state : State.t) (init_env : Env.t) : 'a * State.t * Step.t * Builder.t =
-    x.run ~reject:absurd ~accept:(fun a state step b -> a, state, step, b) init_state Step.zero Builder.empty init_env
+
+  let run_safe (x : 'a s) (init_state : State.t) (init_env : Env.t)
+      : 'a * State.t * Step.t * Builder.t =
+    x.run init_state Step.zero Builder.empty init_env
+      ~reject:absurd
+      ~accept:(fun a state step b -> a, state, step, b)
 
   (*
     -----------------
@@ -168,13 +177,15 @@ module Make (State : T) (Builder : Utils.Builder.S) (Env : ENV) (Err : sig
   let step : (Step.t, 'e) t =
     { run = fun ~reject:_ ~accept state step b _ -> accept step state step b }
 
-  let[@inline always] incr_step ~(max_step : Step.t) : unit m = 
+  let[@inline always] incr_step ~(max_step : Step.t) : unit m =
     { run =
         fun ~reject ~accept state step b _ ->
           let (Step step_n) as step = Step.next step in
-          if step_n > Step.to_int max_step
-          then Tuple2.uncurry reject (Err.fail_on_max_step step_n state) step b
-          else accept () state step b
+          if step_n > Step.to_int max_step then
+            let e, s = Err.fail_on_max_step step_n state in
+            reject e s step b
+          else
+            accept () state step b
     }
 
   let[@inline always] fetch (id : Ast.Ident.t) : Env.value m =

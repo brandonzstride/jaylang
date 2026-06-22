@@ -39,7 +39,7 @@ let rec extract_list : type a. (a, 'x) t list -> 'x list = function
   | I hd :: tl
   | B hd :: tl -> hd :: extract_list tl
 
-module Make (X : Core.T) : S with type x = X.t = struct
+module Make (X : Types.T) : S with type x = X.t = struct
   type x = X.t
   type nonrec 'a t = ('a, X.t) t
   (** Separate [X.t] into an int [I] case and a bool [B] case. *)

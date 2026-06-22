@@ -1,6 +1,4 @@
 
-open Core
-
 module type ROW = sig
   type t
 
@@ -56,12 +54,12 @@ module Column = struct
 
   (* n is number of columns in whole table. ls may be shorter *)
   let tabular_cols (n : int) (ls : t list) : string =
-    let ss = List.map ls ~f:to_string in
-    String.concat
+    let ss = List.map to_string ls in
+    String.concat " "
     begin
     if List.length ss < n
-    then ss @ List.init (n - List.length ss) ~f:(fun _ -> to_string default)
-    else List.take ss n
+    then ss @ List.init (n - List.length ss) (fun _ -> to_string default)
+    else List.take n ss
     end
 end
 
@@ -72,34 +70,47 @@ type 'row t =
   ; columns : Column.t list } (* of same or lesser length than (val row_module).to_strings *)
 
 let concat (type row) (a : row t) (b : row t) : row t =
-  assert (Poly.equal a.columns b.columns);
+  assert (a.columns = b.columns);
   let module A = (val a.row_module) in
   let module B = (val b.row_module) in
-  assert (Poly.equal A.names B.names);
+  assert (A.names = B.names);
   { a with rows = a.rows @ b.rows }
 
 let append (type row) (tbl : row t) (rows : row Row_or_hline.t list) : row t =
   { tbl with rows = tbl.rows @ rows }
 
 let append_rows (type row) (tbl : row t) (rows : row list) : row t =
-  { tbl with rows = tbl.rows @ List.map rows ~f:Row_or_hline.return }
+  { tbl with rows = tbl.rows @ List.map Row_or_hline.return rows }
+
+let rec transpose_grid = function
+  | [] -> []
+  | last_row :: [] ->
+    List.map List.singleton last_row
+  | row :: tl ->
+    List.map2 List.cons row (transpose_grid tl)
 
 let align_on ~(sep : char) (ls : string list) : string list =
-  let open List.Let_syntax in
-  ls
-  >>| String.split ~on:sep
-  |> List.transpose_exn
-  >>| begin fun row -> 
+  let pad_to_max col =
     let m =
-      List.max_elt row ~compare:(fun a b -> Int.compare (String.length a) (String.length b))
-      |> Option.value_exn
-      |> String.length
+      match col with
+      | [] -> failwith "cannot align empty column"
+      | hd :: tl ->
+        List.fold_left (fun cur_max_len a ->
+          let n = String.length a in
+          if Int.compare cur_max_len n >= 0 then
+            cur_max_len
+          else
+            n
+        ) (String.length hd) tl
     in
-    row
-    >>| fun s -> s ^ String.make (m - String.length s) ' '
-  end
-  |> List.transpose_exn
-  >>| String.concat ~sep:(" " ^ Char.to_string sep ^ " ")
+    List.map (fun s -> s ^ String.init (m - String.length s) (fun _ -> ' ')) col
+  in
+  ls
+  |> List.map (String.split_on_char sep)
+  |> transpose_grid
+  |> List.map pad_to_max
+  |> transpose_grid
+  |> List.map (String.concat (" " ^ String.of_char sep ^ " "))
 
 let show_rows (type row) (row_to_strings : row -> string list) (x : row Row_or_hline.t list) : string list =
   let show_single_row = function
@@ -107,21 +118,22 @@ let show_rows (type row) (row_to_strings : row -> string list) (x : row Row_or_h
     | Row row ->
       row
       |> row_to_strings
-      |> String.concat ~sep:" & " (* column delimiter in latex *)
+      |> String.concat " & " (* column delimiter in latex *)
       |> fun s -> "      " ^ s ^ " \\\\" (* line delimiter in latex *)
   in
-  let non_hline_rows = 
-    x
-    |> List.filter ~f:(function Row_or_hline.Hline -> false | _ -> true)
-    |> List.map ~f:show_single_row
-    |> align_on ~sep:'&'
+  let non_hline_rows =
+    align_on ~sep:'&' @@
+    List.filter_map (function
+      | Row_or_hline.Hline -> None
+      | row -> Some (show_single_row row)
+    ) x
   in
-  List.fold x ~init:(0, []) ~f:(fun (i, acc) row ->
+  List.fold_left (fun (i, acc) row ->
     match row with
     | Row_or_hline.Hline -> (i, show_single_row row :: acc)
-    | _ -> (i + 1, List.nth_exn non_hline_rows i :: acc)
-    )
-  |> Tuple2.get2
+    | _ -> (i + 1, List.nth non_hline_rows i :: acc)
+    ) (0, []) x
+  |> snd
   |> List.rev
 
 let show_full (type row) (x : row t) : string =
@@ -139,20 +151,20 @@ let show_full (type row) (x : row t) : string =
     ; "\\end{table}" ]
   in
   table_begin
-  @ [ "    " ^ String.concat R.names ~sep:" & " ^ "\\\\"]
+  @ [ "    " ^ String.concat " & " R.names ^ "\\\\"]
   @ (show_rows R.to_strings x.rows)
   @ table_end
-  |> String.concat ~sep:"\n"
+  |> String.concat "\n"
 
 let show_hum (type row) (x : row t) : string =
   let module R = (val x.row_module) in
-  List.filter_map x.rows ~f:(function
-    | Hline -> None
-    | Row row -> Some (String.concat ~sep:" | " @@ R.to_strings row)
-  )
-  |> List.cons (String.concat R.names ~sep:" | ") (* Put headers on front *)
+  List.filter_map (function
+    | Row_or_hline.Hline -> None
+    | Row row -> Some (String.concat " | " @@ R.to_strings row)
+  ) x.rows
+  |> List.cons (String.concat " | " R.names) (* Put headers on front *)
   |> align_on ~sep:'|'
-  |> String.concat ~sep:"\n"
+  |> String.concat "\n"
 
 let show (type row) ?(hum : bool = true) (x : row t) : string =
   if hum

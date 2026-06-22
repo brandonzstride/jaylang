@@ -1,11 +1,14 @@
 
-(* We use this instead of Preface's standard list monoid because
-  I like how the `Core.List.append` skips the work when RHS is `[]`. *)
+(* We use this instead of Preface's standard list monoid because we want to
+  skip work with RHS is `[]`. *)
 
-module Make (X : Core.T) = struct
+module Make (X : Types.T) = struct
   include Preface.Make.Monoid.Via_combine_and_neutral (struct
     type t = X.t list
     let neutral : t = []
-    let combine : t -> t -> t = Core.List.append (* skips work if either is empty *)
+    let combine : t -> t -> t = fun l r ->
+      match r with
+      | [] -> l
+      | _ -> List.append l r
   end)
 end

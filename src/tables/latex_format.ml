@@ -1,6 +1,4 @@
 
-open Core
-
 (*
   Assumes \rot has been defined to rotate column headers 90 degrees.
   It can be defined as follows:
@@ -8,7 +6,7 @@ open Core
     \newcommand*\rot{\rotatebox{90}}
 *)
 let rotate_90 (s : string) : string =
-  Format.sprintf "\\rot{%s}" s
+  Printf.sprintf "\\rot{%s}" s
 
 (*
   Assumes \red has been define:
@@ -16,7 +14,7 @@ let rotate_90 (s : string) : string =
     \newcommand*\red{\textcolor{red}}
 *)
 let red (s : string) : string =
-  Format.sprintf "\\red{%s}" s
+  Printf.sprintf "\\red{%s}" s
 
 let texttt (s : string) : string =
-  "\\texttt{" ^ String.substr_replace_all ~pattern:"_" ~with_:"\\_" s ^ "}"
+  "\\texttt{" ^ String.replace_all ~sub:"_" ~by:"\\_" s ^ "}"

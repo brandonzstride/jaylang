@@ -33,7 +33,7 @@ module Report_row (* : Latex_table.ROW *) = struct
         then Float.round_decimal fl ~decimal_digits:2
         else Float.round_significant fl ~significant_digits:2 *)
     in
-    [ Filename.basename x.testname |> Core.String.take_while ~f:((<>) '.') |> Latex_format.texttt
+    [ Filename.basename x.testname |> String.take_first_while ((<>) '.') |> Latex_format.texttt
     ; span_to_ms_string x.interp_time
     ; span_to_ms_string x.solve_time
     ; span_to_ms_string x.total_time
@@ -180,6 +180,7 @@ let run () =
     List.nth times (List.length times / 2)
   in
   Format.set_formatter_out_channel Out_channel.stdout;
+  Out_channel.close oc_null;
   tbl
   |> Latex_tbl.show ~hum
   |> Format.printf "%s\n";

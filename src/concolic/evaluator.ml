@@ -27,16 +27,16 @@ end
 
 let make_targets (target : 'k Target.t) (final_path : 'k Path.t)
     ~(max_tree_depth : int) : 'k Target.t list * [ `Pruned of bool ] =
-  let stem = Core.List.drop (Path.to_dirs final_path) (Target.path_n target) in
-  Core.List.fold_until stem ~init:([], target) ~f:(fun (acc, target) dir ->
+  let stem = List.drop (Target.path_n target) (Path.to_dirs final_path) in
+  Utils.Etc.list_fold_until (fun (acc, target) dir ->
       if Target.path_n target > max_tree_depth
-      then Stop (acc, `Pruned true)
-      else Continue (
+      then `Stop (acc, `Pruned true)
+      else `Continue (
           List.map (fun e -> Target.cons e target) (Direction.negations dir)
           @ acc
         , Target.cons (Direction.to_formula dir) target
         )
-    ) ~finish:(fun (acc, _) -> acc, `Pruned false)
+    ) (fun (acc, _) -> acc, `Pruned false) ([], target) stem
 
 module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S)
   (Log : Utils.Logger.FULL with type B.a = Stat.t and type 'a M.m = 'a P.m) = struct

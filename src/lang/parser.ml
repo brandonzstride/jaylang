@@ -26,13 +26,13 @@ module Make(ParsingDesc : PARSING_DESC) = struct
     handle_parse_error buf @@ fun () ->
     ParsingDesc.prog ParsingDesc.token buf
 
-  let parse_single_pgm_string (expr_str : string) : ParsingDesc.statement list = 
+  let parse_single_pgm_string (expr_str : string) : ParsingDesc.statement list =
     let buf = Lexing.from_string expr_str in
     handle_parse_error buf @@ fun () ->
     ParsingDesc.prog ParsingDesc.token buf
 
   let parse_file (filename : string) : ParsingDesc.statement list =
-    parse_single_pgm_string (Core.In_channel.read_all filename)
+    In_channel.with_open_bin filename parse_program
 end
 
 module Bluejay = Make(struct
@@ -56,16 +56,13 @@ module Embedded = Make(struct
 let parse_program_from_file (filename : string) : Ast.some_program =
   match Ast.extension_to_language (Filename.extension filename) with
   | Some language ->
-    let channel = Core.In_channel.read_all filename in
-    begin
-      match language with
-      | SomeLanguage BluejayLanguage ->
-        SomeProgram (BluejayLanguage, Bluejay.parse_single_pgm_string channel)
-      | SomeLanguage DesugaredLanguage ->
-        SomeProgram (DesugaredLanguage,
-                     Desugared.parse_single_pgm_string channel)
-      | SomeLanguage EmbeddedLanguage ->
-        SomeProgram (EmbeddedLanguage, Embedded.parse_single_pgm_string channel)
+    begin match language with
+    | SomeLanguage BluejayLanguage ->
+      SomeProgram (BluejayLanguage, Bluejay.parse_file filename)
+    | SomeLanguage DesugaredLanguage ->
+      SomeProgram (DesugaredLanguage, Desugared.parse_file filename)
+    | SomeLanguage EmbeddedLanguage ->
+      SomeProgram (EmbeddedLanguage, Embedded.parse_file filename)
     end
   | None ->
     raise @@ Invalid_argument (
@@ -78,6 +75,6 @@ let parse_program_from_argv =
     Cmdliner.Arg.(value & pos 0 (some file) None & info []
                     ~docv:"FILE" ~doc:"Input filename")
   in
-  match source_file with 
+  match source_file with
   | Some filename -> parse_program_from_file filename
   | None -> raise @@ Invalid_argument "No filename provided in argv"

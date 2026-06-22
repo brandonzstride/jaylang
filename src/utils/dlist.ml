@@ -3,8 +3,6 @@
   Difference lists
 *)
 
-open Core
-
 type 'a t = 'a list -> 'a list
 
 let empty : 'a t = fun xs -> xs
@@ -24,7 +22,7 @@ let combine = append
 
 let of_list ls = fun xs -> ls @ xs
 
-module Specialize (X : T) = struct
+module Specialize (X : Types.T) = struct
   type a = X.t
   type nonrec t = a t
   let neutral = neutral
@@ -34,7 +32,7 @@ module Specialize (X : T) = struct
   let combine = combine
 end
 
-module Log (X : T) = struct
+module Log (X : Types.T) = struct
   type tape = X.t list
   type 'a m = 'a * X.t t
 

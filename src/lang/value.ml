@@ -36,20 +36,19 @@ module type CELL = sig
 end
 
 let default_to_string_closure_depth =
-  ref @@
-  match Core.Sys.getenv "TO_STRING_CLOSURE_DEPTH" with
-  | Some s ->
-    begin
-      try
-        int_of_string s
-      with
-      | Failure _ ->
+  let d =
+    match Sys.getenv "TO_STRING_CLOSURE_DEPTH" with
+    | exception Not_found -> 0
+    | s ->
+      match int_of_string_opt s with
+      | None ->
         prerr_endline
           (Printf.sprintf
              "Unparseable TO_STRING_CLOSURE_DEPTH env var: %s" s);
         0
-    end
-  | None -> 0
+      | Some i -> i
+  in
+  ref d
 
 (*
   V is the payload of int and bool. We do this so that we can

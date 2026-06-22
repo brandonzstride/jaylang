@@ -9,8 +9,7 @@
    ranking function can be generated for them).
 *)
 
-open Core
-open Ppxlib;;
+open Ppxlib
 
 open Ast_builder.Default;;
 
@@ -39,13 +38,14 @@ let make_rank_function_for_variant_type_decl
     ppat_var ~loc function_name
   in
   let fn_type_params =
-    List.mapi type_params
-      ~f:(fun n _ -> Loc.make ~loc @@ "a" ^ string_of_int n)
+    List.mapi
+      (fun n _ -> Loc.make ~loc @@ "a" ^ string_of_int n)
+      type_params
   in
   let subject_ident = Loc.make ~loc "x" in
   let body_expr =
     pexp_match ~loc (pexp_ident ~loc (llocident subject_ident)) @@
-    List.mapi constructors ~f:(fun n constructor ->
+    List.mapi (fun n constructor ->
         let loc = constructor.pcd_loc in
         let pattern =
           if constructor_arguments_are_empty constructor.pcd_args then
@@ -55,12 +55,12 @@ let make_rank_function_for_variant_type_decl
               (Some (ppat_any ~loc))
         in
         let body = pexp_constant ~loc (Pconst_integer(string_of_int n, None)) in
-        case ~lhs:pattern ~guard:None ~rhs:body)
+        case ~lhs:pattern ~guard:None ~rhs:body) constructors
   in
   let function_param_pattern =
     ppat_constraint ~loc (ppat_var ~loc subject_ident) @@
     ptyp_constr ~loc (llocident type_name) @@
-    List.map ~f:(fun a -> ptyp_constr ~loc (llocident a) []) fn_type_params
+    List.map (fun a -> ptyp_constr ~loc (llocident a) []) fn_type_params
   in
   let function_expr =
     let inner_expr =
@@ -71,9 +71,9 @@ let make_rank_function_for_variant_type_decl
           ~rhs:body_expr
       ]
     in
-    List.fold_right fn_type_params ~init:inner_expr ~f:(fun type_param e ->
+    List.fold_right (fun type_param e ->
         pexp_newtype ~loc type_param e
-      )
+      ) fn_type_params inner_expr
   in
   [ pstr_value ~loc Nonrecursive [
         value_binding ~loc
@@ -105,7 +105,7 @@ let make_rank_functions_for_type_decl_list ~ctxt
   : structure =
   (* Given a list of type declarations, we intend to produce a ranking function
      for those types. *)
-  List.concat_map type_decl_list ~f:(make_rank_function_for_type_decl ~ctxt)
+  List.concat_map (make_rank_function_for_type_decl ~ctxt) type_decl_list
 ;;
 
 let rank_generator () =

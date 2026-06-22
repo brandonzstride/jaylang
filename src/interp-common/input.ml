@@ -1,6 +1,4 @@
 
-open Core
-
 (* can be packed into a list *)
 include Utils.Pack.Make (Utils.Identity)
 
@@ -13,7 +11,7 @@ let input_conv : t Cmdliner.Arg.Conv.t =
     | "true" -> Ok (B true)
     | "false" -> Ok (B false)
     | s ->
-      match Int.of_string_opt s with
+      match int_of_string_opt s with
       | Some i -> Ok (I i)
       | None -> Error (Format.sprintf "Failed to parse an input from '%s'." s)
   in

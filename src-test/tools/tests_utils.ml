@@ -1,4 +1,3 @@
-open Core
 
 open Lang.Ast.Expr
 open Lang.Ast_tools.Utils
@@ -12,7 +11,7 @@ let make_test_case_from_ast
     fun () ->
       let ast1 = ast_gen () in
       let pp_ast1 =
-        String.concat ~sep:"\n\n" (List.map ast1 ~f:(statement_to_string))
+        String.concat "\n\n" (List.map statement_to_string ast1)
       in
       let ast2 =
         try
@@ -24,7 +23,7 @@ let make_test_case_from_ast
           raise exn
       in
       let pp_ast2 =
-        String.concat ~sep:"\n\n" (List.map ast2 ~f:(statement_to_string))
+        String.concat "\n\n" (List.map statement_to_string ast2)
       in
       Alcotest.(check string) "pp_compare" pp_ast1 pp_ast2;
       Alcotest.(check int) "ast_compare" 0

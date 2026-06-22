@@ -1,8 +1,7 @@
-open Core
 open Concolic
 open Utils
 
-let testcase_of_filename (testname : Filename.t) : unit Alcotest.test_case = 
+let testcase_of_filename (testname : string) : unit Alcotest.test_case =
   let metadata = Metadata.of_bjy_file testname in
   let speed_level =
     match metadata.speed with
@@ -30,13 +29,13 @@ let testcase_of_filename (testname : Filename.t) : unit Alcotest.test_case =
 let root_dir = "test/bjy/"
 
 let make_tests (dirs : string list) : unit Alcotest.test list =
-  let open List.Let_syntax in
-  dirs >>| fun dirname -> 
+  List.map (fun dirname ->
     ( dirname
     , [ root_dir ^ dirname ]
       |> File_utils.get_all_bjy_files
-      >>| testcase_of_filename
+      |> List.map testcase_of_filename
     )
+  ) dirs
 
 let () =
   Alcotest.run "concolic"
@@ -82,4 +81,4 @@ let () =
 
     ; "nondeterministic-types"
     ]
-    
+

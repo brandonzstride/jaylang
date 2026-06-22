@@ -1,8 +1,6 @@
 
-open Core
-
 (* Gets all files into a flat list from all given dirs *)
-let get_all_files ?(filter : Filename.t -> bool = fun _ -> true) (dirs : Filename.t list) : Filename.t list =
+let get_all_files ?(filter : string -> bool = fun _ -> true) (dirs : string list) : string list =
   let rec loop outlist = function
     | [] -> outlist
     | f :: fs -> begin
@@ -10,7 +8,7 @@ let get_all_files ?(filter : Filename.t -> bool = fun _ -> true) (dirs : Filenam
       | `Yes ->
           f
           |> Sys_unix.ls_dir
-          |> List.map ~f:(( ^ ) (f ^ "/"))
+          |> List.map (( ^ ) (f ^ "/"))
           |> List.append fs
           |> loop outlist
       | _ when filter f -> loop (f :: outlist) fs
@@ -19,5 +17,5 @@ let get_all_files ?(filter : Filename.t -> bool = fun _ -> true) (dirs : Filenam
   in
   loop [] dirs
 
-let get_all_bjy_files (dirs : Filename.t list) : Filename.t list =
+let get_all_bjy_files (dirs : string list) : string list =
   get_all_files ~filter:(fun f -> Filename.check_suffix f ".bjy") dirs

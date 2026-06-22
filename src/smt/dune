@@ -3,7 +3,6 @@
  (name smt)
  (public_name jay.smt)
  (libraries
-  core
   preface
   z3
   utils

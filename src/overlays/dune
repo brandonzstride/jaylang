@@ -3,7 +3,6 @@
  (name overlays)
  (public_name jay.overlays)
  (libraries
-  core
   preface
   z3
   moonpool
