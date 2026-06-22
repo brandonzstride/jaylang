@@ -1,7 +1,7 @@
 
 open Concolic.Common
 
-module Driver = Concolic.Driver.Of_logger (Utils.Logger.From_builder (Utils.Dlist.Specialize (Stat)))
+module Driver = Concolic.Driver.Of_logger (Utils.Logger.From_builder (Utils.Builder.List_builder (Stat)))
 
 type tape = Driver.tape
 
@@ -58,12 +58,11 @@ module Report_row (* : Latex_table.ROW *) = struct
         | Concolic.Common.Status.Exhausted_full_tree -> ()
         | _ -> assert false
       end; *)
-      let stat_list = tape [] in
       let row =
         { testname
         ; test_result
-        ; interp_time = Stat.sum_time Stat.Interp_time stat_list
-        ; solve_time = Stat.sum_time Stat.Solve_time stat_list
+        ; interp_time = Stat.sum_time Stat.Interp_time tape
+        ; solve_time = Stat.sum_time Stat.Solve_time tape
         ; total_time = run_time
         (* Mtime.Span.add parse_time run_time ignores stats measured total time *)
         ; trial = Number n

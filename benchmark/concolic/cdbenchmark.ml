@@ -1,7 +1,7 @@
 
 open Concolic.Common
 
-module Driver = Concolic.Driver.Of_logger (Utils.Logger.From_builder (Utils.Dlist.Specialize (Stat)))
+module Driver = Concolic.Driver.Of_logger (Utils.Logger.From_builder (Utils.Builder.List_builder (Stat)))
 
 type tape = Driver.tape
 
@@ -60,14 +60,13 @@ module Basic_test = struct
     : t =
     let source = Lang.Parser.parse_program_from_file testname in (* span should maybe include this *)
     let span, (_, tape) = Utils.Time.time runtest source in
-    let stat_list = tape [] in
-      { testname
-      ; interp_time = Stat.sum_time Stat.Interp_time stat_list
-      ; solve_time = Stat.sum_time Stat.Solve_time stat_list
-      ; total_time = span (* ignores stats measured total time *)
-      ; n_interps = Stat.sum_count Stat.N_interps stat_list
-      ; trial
-      ; mode }
+    { testname
+    ; interp_time = Stat.sum_time Stat.Interp_time tape
+    ; solve_time = Stat.sum_time Stat.Solve_time tape
+    ; total_time = span (* ignores stats measured total time *)
+    ; n_interps = Stat.sum_count Stat.N_interps tape
+    ; trial
+    ; mode }
 
   let average (tests : t list) : t =
     match tests with

@@ -15,12 +15,6 @@ module Unit_builder : S with type a = unit and type t = unit = struct
   let combine () () = ()
 end
 
-module Dlist_builder (A : Types.T) : S with type a = A.t and type t = A.t Dlist.t = struct
-  type a = A.t
-  include Dlist
-  type t = a Dlist.t
-end
-
 module List_builder (A : Types.T) : S with type a = A.t and type t = A.t list = struct
   type a = A.t
   type t = a list
@@ -28,7 +22,6 @@ module List_builder (A : Types.T) : S with type a = A.t and type t = A.t list = 
   let cons a ls = a :: ls
   let combine = List.append
 end
-
 
 (*
   Note that BUILDER gives us MONOID:
