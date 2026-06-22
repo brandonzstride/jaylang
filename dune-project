@@ -21,11 +21,13 @@
  (depends
   (alcotest :with-test)
   baby
-  (cmdliner (>= 2.0))
+  (cmdliner (>= 2.1))
   menhir
   moonpool
   mtime
   (ocaml (>= 5.5))
+  (ppxlib (>= 0.38))
+  ppx_jane
   preface
   psq
   z3
