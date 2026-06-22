@@ -16,8 +16,9 @@ module type S = sig
   type t =
     | I of int x
     | B of bool x
-    [@@deriving compare]
   (** Pack [x] into an int [I] case and a bool [B] case. *)
+
+  val compare : t -> t -> int
 end
 
 module Make (X : Comparable.S1) : S with type 'a x := 'a X.t = struct

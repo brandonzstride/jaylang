@@ -16,7 +16,9 @@ depends: [
   "mtime"
   "ocaml" {>= "5.5"}
   "ppxlib" {>= "0.38"}
-  "ppx_jane"
+  "ppx_enumerate" {with-test}
+  "ppx_sexp_conv" {with-test}
+  "ppx_deriving"
   "preface"
   "psq"
   "sexplib" {with-test}

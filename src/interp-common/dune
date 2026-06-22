@@ -10,4 +10,4 @@
  (synopsis "Common interpreter constructs for the Jaylang project")
  (inline_tests)
  (instrumentation (backend landmarks --auto))
- (preprocess (pps ppx_compare ppx_sexp_conv ppx_hash)))
+)

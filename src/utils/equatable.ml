@@ -1,10 +1,10 @@
 
 module type S = sig
-  type t [@@deriving equal]
+  type t [@@deriving eq]
 end
 
 module type S1 = sig
-  type 'a t [@@deriving equal]
+  type 'a t [@@deriving eq]
 end
 
 (*

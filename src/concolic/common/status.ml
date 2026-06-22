@@ -17,10 +17,10 @@ type _ t =
   (* result from a single run *)
   | Reached_max_step : 'a eval t
   | Finished : 'a eval t
-  [@@deriving variants]
+  [@@deriving jay_rank]
 
 let min (type a) (x : a t) (y : a t) : a t =
-  if Variants.to_rank x < Variants.to_rank y
+  if to_rank x < to_rank y
   then x
   else y
 

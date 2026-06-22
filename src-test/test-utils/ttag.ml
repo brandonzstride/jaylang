@@ -32,7 +32,7 @@ type t =
   | Return_error
   | Usage_error
   | Other
-  [@@deriving variants, sexp, compare, enumerate, equal]
+  [@@deriving sexp, enumerate, eq]
 
 (* Description, if not totally trivial *)
 (* Lists are often excluded because they are trivial, built in, and used so often *)

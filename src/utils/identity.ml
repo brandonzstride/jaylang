@@ -4,9 +4,9 @@
   This is the "identity functor" but is actual identity.
 *)
 
-type 'a t = 'a [@@deriving compare]
+type 'a t = 'a [@@deriving ord]
 
-let to_string (f : 'a -> string) (x : 'a t) : string = 
+let to_string (f : 'a -> string) (x : 'a t) : string =
   f x
 
 let put a = a
@@ -23,7 +23,7 @@ module Monad : Types.MONAD with type 'a m = 'a = struct
 end
 
 module Transformer (M : Types.MONAD) : Types.TRANSFORMED with type 'a m = 'a M.m and type 'a lower := 'a M.m = struct
-  include M 
+  include M
   let upper m = m
   let map_t f = f
 end

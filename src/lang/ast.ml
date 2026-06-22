@@ -144,7 +144,7 @@ module Binop = struct
     | BGeq
     | BAnd
     | BOr
-  [@@deriving equal, compare]
+  [@@deriving eq, ord]
 
   let to_string = function
     | BPlus -> "+"
@@ -182,11 +182,11 @@ module Pattern = struct
     (* only Bluejay *)
     | PEmptyList : 'a bluejay_or_type_erased t
     | PDestructList : { hd_id : Ident.t ; tl_id : Ident.t } -> 'a bluejay_or_type_erased t
-  [@@deriving variants]
+  [@@deriving jay_rank]
 
   let cmp : type a. a t -> a t -> [ `LT | `GT | `Eq of (Ident.t * Ident.t) list ] =
     fun a b ->
-    match Int.compare (Variants.to_rank a) (Variants.to_rank b) with
+    match Int.compare (to_rank a) (to_rank b) with
     | 0 -> begin
         match a, b with
         | PAny, PAny -> `Eq []

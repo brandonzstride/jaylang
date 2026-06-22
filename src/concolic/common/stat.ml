@@ -3,17 +3,17 @@ type time_kind =
   | Interp_time  (* How long was spent interpreting the program *)
   | Solve_time   (* How long was spent solving constraints *)
   | Total_time   (* How long the entire concolic evaluation (loop) took *)
-  [@@deriving equal]
+  [@@deriving eq]
 
 type count_kind =
   | N_interps (* Number of interpretations taken during concolic loop *)
   | N_solves  (* Number of times the constraints for a target were attempted to be solved *)
-  [@@deriving equal]
+  [@@deriving eq]
 
 type depth_kind =
   | Target_depth (* How many branches were in the target that led to the error *)
   | Error_depth  (* How many branches were in the path that led to the error *)
-  [@@deriving equal]
+  [@@deriving eq]
 
 module T = struct
   type t =
