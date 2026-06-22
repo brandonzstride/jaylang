@@ -8,7 +8,7 @@
 
     This will break if the concolic evaluator does not have this
     property, and it won't break loudly, so the developer must be
-    very careful that this assumption continues to hold. That is, 
+    very careful that this assumption continues to hold. That is,
     the entire concolic evaluation system will be quietly incorrect
     if this property is violated.
 *)
@@ -27,8 +27,9 @@ val compare : 'k t -> 'k t -> int
     and hence only literal equality (of memory location) is sufficient
     for [compare a b] to be [0]. *)
 
-val to_formulas : 'k t -> (bool, 'k) Smt.Formula.t list
-(** [to_formulas t] are the constraints to solve in order to realize [t]. *)
+val to_formula : 'k t -> (bool, 'k) Smt.Formula.t
+(** [to_formula t] is the conjuection of the constraints to solve in order to
+  realize [t]. *)
 
 val path_n : 'k t -> int
 (** [path_n target] is the length of the path to the [target]. *)

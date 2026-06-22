@@ -60,9 +60,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
 
     module Eval = Evaluator.Make (Key) (Make_tq) (Pause.Id) (Log)
 
-    module Default_Z3 = Overlays.Typed_z3.Make ()
-    module Default_solver = Smt.Formula.Make_solver (Default_Z3)
-
+    let solve = Smt.Solve.main_solve (module Overlays.Typed_z3.Default)
 
     (*
       ----------------------
@@ -73,7 +71,7 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
     let test_with_timeout
       : options:Options.t -> Lang.Ast.Embedded.t -> Status.Terminal.t * tape
       = fun ~options prog ->
-      let main = Eval.c_loop ~options C.ceval Default_solver.solve prog in
+      let main = Eval.c_loop ~options C.ceval solve prog in
       try Log.run main with
       | _ -> Status.Timeout, T.B.empty (* FIXME: timeout doesn't provide stats *)
 
@@ -112,8 +110,8 @@ module Of_logger (T : Utils.Logger.TRANSFORMER with type B.a = Stat.t) : S with 
         let run (expr : t) : Compute_result.t =
           (* makes a new solver for this thread *)
           let module Z = Overlays.Typed_z3.Make () in
-          let module S = Smt.Formula.Make_solver (Z) in
-          Eval.c_loop ~options:O.options C.ceval S.solve expr
+          let solve = Smt.Solve.simplify (Smt.Solve.direct_solve (module Z)) in
+          Eval.c_loop ~options:O.options C.ceval solve expr
       end
 
       let timeout = O.options.global_timeout

@@ -25,7 +25,8 @@ end
   -------------
 *)
 
-let make_targets (target : 'k Target.t) (final_path : 'k Path.t) ~(max_tree_depth : int) : 'k Target.t list * [ `Pruned of bool ] =
+let make_targets (target : 'k Target.t) (final_path : 'k Path.t)
+    ~(max_tree_depth : int) : 'k Target.t list * [ `Pruned of bool ] =
   let stem = Core.List.drop (Path.to_dirs final_path) (Target.path_n target) in
   Core.List.fold_until stem ~init:([], target) ~f:(fun (acc, target) dir ->
       if Target.path_n target > max_tree_depth
@@ -37,7 +38,8 @@ let make_targets (target : 'k Target.t) (final_path : 'k Path.t) ~(max_tree_dept
         )
     ) ~finish:(fun (acc, _) -> acc, `Pruned false)
 
-module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S) (Log : Utils.Logger.FULL with type B.a = Stat.t and type 'a M.m = 'a P.m) = struct
+module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S)
+  (Log : Utils.Logger.FULL with type B.a = Stat.t and type 'a M.m = 'a P.m) = struct
   module Tq = Make_tq (K)
 
   open Log
@@ -45,14 +47,14 @@ module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S) (Lo
   (*
     Falls back on all-zero input feeder on first run and default (random) feeder after that.
   *)
-  let c_loop_body (e : Lang.Ast.Embedded.t) (eval : K.t eval) (tq : Tq.t) (solve : K.t Smt.Formula.solver)
+  let c_loop_body (e : Lang.Ast.Embedded.t) (eval : K.t eval) (tq : Tq.t) (solve : K.t Smt.Solve.solver)
     ~(max_tree_depth : int) ~(max_step : Interp_common.Step.t) : Status.Terminal.t Log.m =
     let is_first_interp = ref true in
     let rec loop tq =
       let* () = upper @@ P.pause () in
       match Tq.pop tq with
       | Some (target, tq) -> begin
-          let solve_span, solve_result = Utils.Time.time solve (Target.to_formulas target) in
+          let solve_span, solve_result = Utils.Time.time solve (Target.to_formula target) in
           let* () = log @@ Time (Solve_time, solve_span) in
           let* () = log @@ Count (N_solves, 1) in
           let* () = upper @@ P.pause () in
@@ -99,7 +101,8 @@ module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE) (P : Pause.S) (Lo
     let* () = log @@ Time (Total_time, Mtime.span t0 t1) in
     return res
 
-  let c_loop ~(options : Options.t) (eval : K.t eval) (solve : K.t Smt.Formula.solver) (e : Lang.Ast.Embedded.t) : Status.Terminal.t Log.m =
+  let c_loop ~(options : Options.t) (eval : K.t eval) (solve : K.t Smt.Solve.solver)
+      (e : Lang.Ast.Embedded.t) : Status.Terminal.t Log.m =
     if not options.is_random then Interp_common.Rand.reset ();
     let lifted_timeout t f =
       let* (a, tape) = Log.map_t (fun m ->

@@ -43,11 +43,11 @@ opam update
 ```
 
 Install the local opam switch with the following command. Answer `yes` to all questions. It can take a while.
-This command installs the dependencies of this project to opam. You are supposed 
+This command installs the dependencies of this project to opam. You are supposed
 to develop in this directory, as this switch is only active when you are in this directory.
 
 ```
-opam switch create ./ 5.3.0
+opam switch create . 5.5.0
 ```
 
 Note that this installs all of the necessary packages to build and run the project. However, you may want a few developer tools. We suggest you run the following to get developer tools:
@@ -68,7 +68,7 @@ make ceval
 ```
 
 This makes the executable to run the concolic evaluator on a BlueJay file.
-The resulting executable, `ceval.exe`, can be used directly by running the 
+The resulting executable, `ceval.exe`, can be used directly by running the
 command
 
 ```

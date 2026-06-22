@@ -64,7 +64,7 @@ let make_rank_function_for_variant_type_decl
   in
   let function_expr =
     let inner_expr =
-      pexp_function ~loc [
+      pexp_function_cases ~loc [
         case
           ~lhs:function_param_pattern
           ~guard:None
@@ -73,7 +73,7 @@ let make_rank_function_for_variant_type_decl
     in
     List.fold_right fn_type_params ~init:inner_expr ~f:(fun type_param e ->
         pexp_newtype ~loc type_param e
-      ) 
+      )
   in
   [ pstr_value ~loc Nonrecursive [
         value_binding ~loc

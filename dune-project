@@ -25,6 +25,7 @@
   menhir
   moonpool
   mtime
+  (ocaml (>= 5.5))
   (ppx_deriving (>= 3.2))
   preface
   psq

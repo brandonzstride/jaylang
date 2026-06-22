@@ -19,8 +19,8 @@ let cons (formula : (bool, 'k) Smt.Formula.t) (target : 'k t) : 'k t =
   ; uniq_id = Utils.Counter.next uid
   ; formulas = formula :: target.formulas }
 
-let to_formulas ( { formulas ; _ } : 'k t) : (bool, 'k) Smt.Formula.t list =
-  formulas
+let to_formula ( { formulas ; _ } : 'k t) : (bool, 'k) Smt.Formula.t =
+  Smt.Formula.and_ formulas
 
 (*
   SUPER IMPORTANT NOTE:

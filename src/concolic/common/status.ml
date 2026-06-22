@@ -49,28 +49,20 @@ let to_string (type a) (x : a t) : string =
   | Finished                 -> "Finished interpretation"
 
 let to_loud_string (type a) (x : a t) : string =
-  (* commented functions are only since 5.5 *)
   let make_loud s =
     String.map (fun c ->
-      if Core.Char.is_alpha c (*Char.Ascii.is_letter c*) then
-        Core.Char.uppercase c
-        (* Char.Ascii.uppercase c *)
-      else if Core.Char.is_whitespace c (*Char.Ascii.is_white c*) then
+      if Char.Ascii.is_letter c then
+        Char.Ascii.uppercase c
+      else if Char.Ascii.is_white c then
         '_'
       else
         c
     ) s
   in
   let s = to_string x in
-  match Core.String.substr_index s ~pattern:":" with
+  match String.split_first ~sep:":" s with
   | None -> make_loud s
-  | Some i ->
-    let before_colon = Core.String.prefix s i in
-    let after_colon = Core.String.drop_prefix s i in
-    make_loud before_colon ^ after_colon
-  (* match String.split_first ~sep:":" s with
-  | None -> make_loud s
-  | Some (before, after) -> make_loud before ^ after *)
+  | Some (before, after) -> make_loud before ^ after
 
 module Eval = struct
   type nonrec t = [ `Eval ] t

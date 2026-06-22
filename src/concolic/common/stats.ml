@@ -27,9 +27,7 @@ let create () =
   }
 
 let sum_opts x y =
-  Core.Option.merge ~f:(+) x y
-  (* Option.blend (+) x y *)
-  (* Option.blend since 5.5 *)
+  Option.blend (+) x y
 
 let combine a b =
   { interp_time = Mtime.Span.add a.interp_time b.interp_time

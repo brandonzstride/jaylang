@@ -27,8 +27,7 @@ let argv_span_conv =
       )
     ~pp:Mtime.Span.pp
 
-(* available in later compiler versions *)
-(* type _ Effect.t += Check_timeout : unit Effect.t
+type _ Effect.t += Check_timeout : unit Effect.t
 
 let yield_to_timer () = Effect.perform Check_timeout
 
@@ -44,4 +43,4 @@ let with_timeout span f a =
       try Effect.Deep.discontinue k Timeout with
       | Timeout -> Error t
     else
-      Effect.Deep.continue k () *)
+      Effect.Deep.continue k ()

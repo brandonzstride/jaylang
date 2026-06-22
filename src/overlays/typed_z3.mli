@@ -5,8 +5,8 @@
   It is recommended to use Smt.Formula.t to build
   formulas instead, and then transform into Z3 formulas.
 *)
-module Make () : Smt.Formula.SOLVABLE
+module Make () : Smt.Solve.SOLVABLE
 
-module Default : Smt.Formula.SOLVABLE
+module Default : Smt.Solve.SOLVABLE
 
-include Smt.Formula.SOLVABLE with type ('a, 'k) t = ('a, 'k) Default.t
+include Smt.Solve.SOLVABLE with type ('a, 'k) t = ('a, 'k) Default.t
