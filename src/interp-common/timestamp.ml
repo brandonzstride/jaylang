@@ -11,15 +11,12 @@ module type S = sig
 end
 
 module Simple : S = struct
-  module T = struct
-    type t =
-      | Timestamp of int list [@@unboxed]
+  type t =
+    | Timestamp of int list [@@unboxed]
 
-    let equal (Timestamp a) (Timestamp b) =
-      List.equal Int.equal a b
-  end
+  let equal (Timestamp a) (Timestamp b) =
+    List.equal Int.equal a b
 
-  include T
   let initial = Timestamp [1]
   let push (Timestamp xs) = Timestamp (1::xs)
   let increment = function

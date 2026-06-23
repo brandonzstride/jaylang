@@ -15,14 +15,10 @@ type depth_kind =
   | Error_depth  (* How many branches were in the path that led to the error *)
   [@@deriving eq]
 
-module T = struct
-  type t =
-    | Time of time_kind * Mtime.Span.t
-    | Count of count_kind * int
-    | Depth of depth_kind * int
-end
-
-include T
+type t =
+  | Time of time_kind * Mtime.Span.t
+  | Count of count_kind * int
+  | Depth of depth_kind * int
 
 module Unit_builder : Utils.Builder.S with type a = t and type t = unit = struct
   type a = t
