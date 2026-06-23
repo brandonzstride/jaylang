@@ -4,6 +4,13 @@
  (public_name jay.translate)
  (modules convert desugar embed translation_tools type_erasure splay)
  (private_modules desugar embed translation_tools type_erasure)
- (libraries cmdliner utils lang nel)
+ (libraries
+  ; internal
+  lang
+  utils
+  ; external
+  cmdliner
+  nel
+ )
  (instrumentation (backend landmarks --auto))
  )

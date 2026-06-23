@@ -4,14 +4,16 @@
  (name concolic)
  (public_name jay.concolic)
  (libraries
+  ; internal
   translate
   interpreter
-  cmdliner
   interp_common
+  ; external
   baby
-  psq
+  cmdliner
   mtime
   nel
+  psq
  )
  (synopsis "Concolic evaluator on embedded-type programs")
  (inline_tests)

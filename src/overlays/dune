@@ -3,11 +3,13 @@
  (name overlays)
  (public_name jay.overlays)
  (libraries
+  ; internal
+  smt
+  utils
+  ; external
+  moonpool
   nel
   z3
-  moonpool
-  utils
-  smt
   )
  (synopsis "Library overlays for the Jaylang project")
  (inline_tests)

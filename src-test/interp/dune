@@ -3,10 +3,12 @@
  (names test_interp)
  (modules test_interp)
  (libraries
-  utils
-  alcotest
-  metadata
-  lang
+  ; internal
   interpreter
+  lang
+  metadata
   translate
+  utils
+  ; external
+  alcotest
  ))

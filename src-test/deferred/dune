@@ -3,10 +3,12 @@
  (names test_deferred)
  (modules test_deferred)
  (libraries
-  utils
-  alcotest
-  metadata
-  lang
+  ; internal
   deferred
+  lang
+  metadata
   translate
+  utils
+  ; external
+  alcotest
  ))

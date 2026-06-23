@@ -4,9 +4,10 @@
  (name utils)
  (public_name jay.utils)
  (libraries
+  ; external
   cmdliner
   mtime
-  mtime.clock.os
+  mtime.clock
   )
  (synopsis "Utils module for the Jaylang project")
  (inline_tests)

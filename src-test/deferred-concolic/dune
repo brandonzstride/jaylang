@@ -3,9 +3,11 @@
  (names test_deferred_concolic)
  (modules test_deferred_concolic)
  (libraries
-  utils
-  cmdliner
-  alcotest
+  ; internal
+  concolic
   metadata
-  concolic)
- )
+  utils
+  ; external
+  alcotest
+  cmdliner
+ ))

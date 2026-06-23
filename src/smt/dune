@@ -3,8 +3,10 @@
  (name smt)
  (public_name jay.smt)
  (libraries
-  z3
+  ; internal
   utils
+  ; external
+  z3
   )
  (synopsis "SMT module for the Jaylang project")
  (inline_tests)

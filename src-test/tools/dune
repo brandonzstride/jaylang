@@ -5,5 +5,13 @@
   tests_pp_test_files
   tests_randomly_generated_asts
   tests_utils)
- (libraries utils cmdliner alcotest metadata concolic)
+ (libraries
+  ; internal
+  concolic
+  metadata
+  utils
+  ; external
+  alcotest
+  cmdliner
+ )
 )

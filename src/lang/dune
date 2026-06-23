@@ -21,6 +21,12 @@
  (public_name jay.lang)
  (synopsis "Languages in Jaylang")
  (modules (:standard))
- (libraries baby cmdliner utils)
+ (libraries
+  ; internal
+  utils
+  ; external
+  baby
+  cmdliner
+ )
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.ord jay_ppx_local)))

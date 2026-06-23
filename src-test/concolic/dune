@@ -3,9 +3,11 @@
  (names test_concolic)
  (modules test_concolic)
  (libraries
-  utils
-  cmdliner
-  alcotest
+  ; internal
+  concolic
   metadata
-  concolic)
- )
+  utils
+  ; external
+  alcotest
+  cmdliner
+ ))
