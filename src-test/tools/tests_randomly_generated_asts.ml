@@ -99,11 +99,11 @@ let pick_param ~(ctx : 'a context) : 'a param =
 let pick_funsig ~(ctx : 'a context) : 'a funsig =
   if pick_bool ~ctx then
     FUntyped { func_id = pick_ident ~ctx ();
-               params = pick_list ~ctx (pick_ident ~ctx);
+               params = pick_list ~ctx (fun () -> pick_ident ~ctx ());
                defn = pick_expr ~ctx
              }
   else
-    FTyped { type_vars = pick_list ~ctx (pick_ident ~ctx);
+    FTyped { type_vars = pick_list ~ctx (fun () -> pick_ident ~ctx ());
              func_id = pick_ident ~ctx ();
              params = pick_list ~ctx (fun () -> pick_param ~ctx);
              ret_type = pick_expr ~ctx;

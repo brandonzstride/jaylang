@@ -1,4 +1,4 @@
-.PHONY: all always clean translator jil logclean cbenchmark repl sctest 
+.PHONY: all always clean translator jil logclean cbenchmark repl sctest
 
 BUILD = _build/default
 BUILD_SRC = _build/default/src
@@ -27,17 +27,13 @@ bjy-cloc:
 
 ft:
 	dune build src/tables/test_features/tagger.exe
-	
+
 # clean up
 
 clean:
 	dune clean
 	rm -rf _coverage/
 	rm *.coverage
-
-logclean:
-	rm -f dot/*
-	rm -f logs/*
 
 # testing
 

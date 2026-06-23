@@ -7,8 +7,7 @@ license: "Apache-2.0"
 homepage: "https://github.com/JHU-PL-Lab/jaylang"
 bug-reports: "https://github.com/JHU-PL-Lab/jaylang/issues"
 depends: [
-  "dune" {>= "3.19"}
-  "alcotest" {with-test}
+  "dune" {>= "3.22"}
   "baby"
   "cmdliner" {>= "2.1"}
   "menhir" {>= "20180523"}
@@ -17,12 +16,17 @@ depends: [
   "nel"
   "ocaml" {>= "5.5"}
   "ppxlib" {>= "0.38"}
-  "ppx_enumerate" {with-test}
-  "ppx_sexp_conv" {with-test}
   "ppx_deriving"
   "psq"
-  "sexplib" {with-test}
   "z3"
+  "alcotest" {with-test}
+  "ppx_enumerate" {with-test}
+  "ppx_sexp_conv" {with-test}
+  "sexplib" {with-test}
+  "landmarks" {with-dev-setup}
+  "landmarks-ppx" {with-dev-setup}
+  "ocaml-lsp-server" {with-dev-setup}
+  "ocamlformat" {with-dev-setup}
   "odoc" {with-doc}
 ]
 build: [

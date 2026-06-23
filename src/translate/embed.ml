@@ -206,7 +206,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
     | EVariant { label ; payload } ->
       EVariant { label ; payload = embed payload }
     | ERecord m ->
-      ERecord (RecordLabel.Map.map embed m)
+      ERecord (RecordLabel.Map.map (fun e -> embed e) m)
     | EModule stmt_ls ->
       EModule (List.map embed_statement stmt_ls)
     | EMatch { subject ; patterns } ->

@@ -31,8 +31,8 @@ let bjy_to_emb (bjy : Bluejay.pgm) ~(do_wrap : bool) ~(do_type_splay : Splay.t) 
 let bjy_to_many_emb (bjy : Bluejay.pgm) ~(do_wrap : bool) ~(do_type_splay : Splay.t) : Embedded.pgm Nel.t =
   let module Names = Translation_tools.Fresh_names.Make () in
   bjy
-  |> bjy_to_des ~do_type_splay
-  |> des_to_many_emb ~do_wrap ~do_type_splay
+  |> Desugar.desugar_pgm (module Names) ~do_type_splay
+  |> Embed.embed_fragmented (module Names) ~do_wrap ~do_type_splay
 
 let bjy_to_erased (bjy : Bluejay.pgm) : Type_erased.pgm =
   Type_erasure.erase bjy

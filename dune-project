@@ -1,4 +1,4 @@
-(lang dune 3.19)
+(lang dune 3.22)
 
 (name jay)
 
@@ -19,7 +19,6 @@
  (name jay)
  (description "Semantic typing via program translation and symbolic execution")
  (depends
-  (alcotest :with-test)
   baby
   (cmdliner (>= 2.1))
   menhir
@@ -28,12 +27,19 @@
   nel
   (ocaml (>= 5.5))
   (ppxlib (>= 0.38))
-  (ppx_enumerate :with-test)
-  (ppx_sexp_conv :with-test)
   ppx_deriving
   psq
-  (sexplib :with-test)
   z3
+  ; test
+  (alcotest :with-test)
+  (ppx_enumerate :with-test)
+  (ppx_sexp_conv :with-test)
+  (sexplib :with-test)
+  ; dev setup
+  (landmarks :with-dev-setup)
+  (landmarks-ppx :with-dev-setup)
+  (ocaml-lsp-server :with-dev-setup)
+  (ocamlformat :with-dev-setup)
   ))
 
 
