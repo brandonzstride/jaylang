@@ -11,6 +11,7 @@
   baby
   psq
   mtime
+  nel
  )
  (synopsis "Concolic evaluator on embedded-type programs")
  (inline_tests)

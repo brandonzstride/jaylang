@@ -539,7 +539,8 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       res
     | ETypeTop ->
       make_embedded_type
-        { gen = lazy (EVariant { label = Reserved.top ; payload = ERecord (RecordLabel.Map.singleton Reserved.nonce EPick_i) })
+        { gen = lazy (EVariant { label = Reserved.top ; payload =
+            ERecord (RecordLabel.Map.singleton Reserved.nonce EPick_i) })
         ; check = lazy (fresh_abstraction "e_top_check" @@ fun _ -> EUnit)
         ; wrap = lazy eid
         }
@@ -562,7 +563,8 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
         ; wrap = lazy eid
         }
 
-  and embed_let_defn ?(do_wrap : bool = do_wrap) ~(do_check : bool) ~(tau : Desugared.t) (defn : Desugared.t) : Embedded.t =
+  and embed_let_defn ?(do_wrap : bool = do_wrap) ~(do_check : bool)
+      ~(tau : Desugared.t) (defn : Desugared.t) : Embedded.t =
     build @@
     let* v = capture @@ embed defn in
     let* () =
@@ -613,7 +615,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
   * This is somewhat inefficient because we translate the program once for each version, so we are duplicating work.
   * We could do this really intelligently, but right now it doesn't matter.
 *)
-let split_checks (stmt_ls : Desugared.statement list) : Desugared.pgm Preface.Nonempty_list.t =
+let split_checks (stmt_ls : Desugared.statement list) : Desugared.pgm Nel.t =
   let has_check (stmt : Desugared.statement) : bool =
     match stmt with
     | SUntyped _ -> false
@@ -638,10 +640,11 @@ let split_checks (stmt_ls : Desugared.statement list) : Desugared.pgm Preface.No
       else
         go pgms (prev_stmts @ [ stmt ]) tl
   in
-  match Preface.Nonempty_list.from_list @@ go [] [] stmt_ls with
-  | None -> Preface.Nonempty_list.Last stmt_ls
+  match Nel.from_list @@ go [] [] stmt_ls with
+  | None -> stmt_ls :: []
   | Some pgm_ls -> pgm_ls
 
-let embed_fragmented (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap : bool) ~(do_type_splay : Splay.t) : Embedded.pgm Preface.Nonempty_list.t =
-  Preface.Nonempty_list.map (fun pgm -> embed_pgm names pgm ~do_wrap ~do_type_splay)
+let embed_fragmented (names : (module Fresh_names.S)) (pgm : Desugared.pgm)
+   ~(do_wrap : bool) ~(do_type_splay : Splay.t) : Embedded.pgm Nel.t =
+  Nel.map (fun pgm -> embed_pgm names pgm ~do_wrap ~do_type_splay)
   @@ split_checks pgm

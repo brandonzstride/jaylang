@@ -22,6 +22,6 @@ val embed_pgm : (module Translation_tools.Fresh_names.S) -> Lang.Ast.Desugared.p
     is yes. *)
 
 val embed_fragmented : (module Translation_tools.Fresh_names.S) -> Lang.Ast.Desugared.pgm ->
-    do_wrap:bool -> do_type_splay:Splay.t -> Lang.Ast.Embedded.pgm Preface.Nonempty_list.t
+    do_wrap:bool -> do_type_splay:Splay.t -> Lang.Ast.Embedded.pgm Nel.t
 (** [embed_fragmented (module F) des do_wrap do_type_splay] embeds the [des] into many programs
     that each have a different check turned on. *)

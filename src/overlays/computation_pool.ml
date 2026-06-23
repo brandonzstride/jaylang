@@ -2,15 +2,15 @@
 open Moonpool
 
 module type COMPUTE_RESULT = sig
-  include Preface.Specs.MONOID
+  include Utils.Types.MONOID
   val is_signal_to_quit : t -> bool
 end
 
-let process_all (module C : COMPUTE_RESULT) (run : 'a -> C.t) (ls : 'a Preface.Nonempty_list.t) =
+let process_all (module C : COMPUTE_RESULT) (run : 'a -> C.t) (ls : 'a Nel.t) =
   (* We create one thread per work item, but it may be recommended to do fewer if this number is huge *)
-  let pool = Ws_pool.create ~num_threads:(Preface.Nonempty_list.length ls) () in
+  let pool = Ws_pool.create ~num_threads:(Nel.length ls) () in
   let futures =
-    Preface.Nonempty_list.to_list ls
+    Nel.to_list ls
     |> List.map (fun item ->
       Fut.spawn ~on:pool (fun () -> run item)
     )

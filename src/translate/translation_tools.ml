@@ -27,20 +27,21 @@ module Let_builder (L : sig
   type t
   val t_to_expr : t -> body:a Expr.t -> a Expr.t
 end) = struct
-  module T = struct
-    (*
-      This transforms the identity monad to a writer, where the
-      operation to write is list concatenation.
-    *)
-    module M = Preface.Writer.Over (Preface.List.Monoid (L))
-    include M
-    type 'a m = 'a M.t
-    let (let*) = M.Syntax.( let* )
-    let bind x f = bind f x (* Preface defines this in a strange order. Flip it. *)
-    let tell a = tell [ a ] (* in our use case, we only write one at a time, so alias for that *)
-  end
+  type tape = L.t list
 
-  include T
+  (* for efficiency, use stateful "tape" *)
+  type 'a m = tape -> 'a * tape
+
+  let bind x f =
+    fun s ->
+      let a, s' = x s in
+      f a s'
+
+  let ( let* ) = bind
+
+  let return a = fun s -> a, s
+
+  let tell a = fun s -> (), a :: s
 
   let iter (ls : 'a list) ~(f : 'a -> unit m) : unit m =
     List.fold_left (fun acc_m a ->
@@ -48,9 +49,8 @@ end) = struct
     ) (return ()) ls
 
   let build (m : L.a Expr.t m) : L.a Expr.t =
-    let body, resulting_bindings = run_identity m in
-    (* we must fold right because of the ordering of Preface.List.Monoid.combine and how it is added to the tape *)
-    List.fold_right (fun tape body -> L.t_to_expr tape ~body) resulting_bindings body
+    let body, bindings = m [] in
+    List.fold_left (fun body tape -> L.t_to_expr tape ~body) body bindings
 end
 
 open Ast_tools

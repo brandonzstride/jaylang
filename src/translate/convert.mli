@@ -24,7 +24,7 @@ val bjy_to_emb : Lang.Ast.Bluejay.pgm -> do_wrap:bool -> do_type_splay:Splay.t -
     The "wrap" behavior is only on if [do_wrap] is true.
     See the docs for translation behavior if [do_type_splay] is yes. *)
 
-val bjy_to_many_emb : Lang.Ast.Bluejay.pgm -> do_wrap:bool -> do_type_splay:Splay.t -> Lang.Ast.Embedded.pgm Preface.Nonempty_list.t
+val bjy_to_many_emb : Lang.Ast.Bluejay.pgm -> do_wrap:bool -> do_type_splay:Splay.t -> Lang.Ast.Embedded.pgm Nel.t
 (** [bjy_to_many_emb bjy do_wrap do_type_splay] embeds the Bluejay program into many embedded programs,
     each with a different check turned on so that the checks can be run in parallel. *)
 
@@ -37,7 +37,7 @@ val some_program_to_emb : Lang.Ast.some_program -> do_wrap:bool -> do_type_splay
     into an embedded program.  Note that [do_wrap] and [do_type_splay] may not apply depending
     upon the contents of [some_program]. *)
 
-val some_program_to_many_emb : Lang.Ast.some_program -> do_wrap:bool -> do_type_splay:Splay.t -> Lang.Ast.Embedded.pgm Preface.Nonempty_list.t
+val some_program_to_many_emb : Lang.Ast.some_program -> do_wrap:bool -> do_type_splay:Splay.t -> Lang.Ast.Embedded.pgm Nel.t
 (** [some_program_to_emb prog do_wrap do_type_splay] converts a [some_program] structure
     into many embedded programs, each with a different check turned on so that the checks
     can be run in parallel.  Note that [do_wrap] and [do_type_splay] may not apply

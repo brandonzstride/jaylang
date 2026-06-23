@@ -74,13 +74,13 @@ module Of_logger (Log : Utils.Logger.FULL with type B.a = Stat.t) : S with type 
     module Compute_result = struct
       open Log
 
-      include Preface.Make.Monoid.Via_combine_and_neutral (struct
-        type t = Status.Terminal.t Log.m
-        let neutral : t = Log.return Status.Exhausted_full_tree
-        let combine : t -> t -> t = fun a b ->
-          let* a in let* b in
-          return (Status.min a b)
-      end)
+      type t = Status.Terminal.t Log.m
+
+      let neutral : t = Log.return Status.Exhausted_full_tree
+
+      let combine : t -> t -> t = fun a b ->
+        let* a in let* b in
+        return (Status.min a b)
 
       let is_signal_to_quit : t -> bool =
         (* TOOD: this is hideous, but I don't see a way around it right now *)
@@ -106,7 +106,7 @@ module Of_logger (Log : Utils.Logger.FULL with type B.a = Stat.t) : S with type 
           Translate.Convert.some_program_to_many_emb program ~do_wrap ~do_type_splay
         in
         match pgms with
-        | Last pgm ->
+        | pgm :: [] ->
           (* Nothing to do in parallel if only one program *)
           test_with_timeout ~options @@ Lang.Ast_tools.Utils.pgm_to_module pgm
         | _ ->

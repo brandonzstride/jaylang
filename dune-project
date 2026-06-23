@@ -25,12 +25,12 @@
   menhir
   moonpool
   mtime
+  nel
   (ocaml (>= 5.5))
   (ppxlib (>= 0.38))
   (ppx_enumerate :with-test)
   (ppx_sexp_conv :with-test)
   ppx_deriving
-  preface
   psq
   (sexplib :with-test)
   z3

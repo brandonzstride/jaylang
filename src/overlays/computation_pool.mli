@@ -8,12 +8,11 @@
 *)
 
 module type COMPUTE_RESULT = sig
-  include Preface.Specs.MONOID
+  include Utils.Types.MONOID
   val is_signal_to_quit : t -> bool
 end
 
-val process_all : (module C : COMPUTE_RESULT) -> ('a -> C.t)
-  -> 'a Preface.Nonempty_list.t -> C.t
+val process_all : (module C : COMPUTE_RESULT) -> ('a -> C.t) -> 'a Nel.t -> C.t
 (** [process_all (module C) run work_items] runs the computation [run] on all
     items in [work_items] at once. Each item gets a fresh domain even if there
     is just one work item. *)
