@@ -24,3 +24,13 @@ let list_fold_until f finish init ls =
       | `Continue a -> go a tl
   in
   go init ls
+
+(**
+  Set minor heap size to roughly 1 million machine words.
+  On a 64 bit system, this is typically 8 million bytes, i.e. 8 megabytes.
+
+  Precisely, this sets minor heap size to 2^20 words, which is 8 Mebibytes on a
+  64 bit architecture.
+*)
+let set_1M_minor_heap () =
+  Gc.set ({ (Gc.get ()) with minor_heap_size = 1 lsl 20 })

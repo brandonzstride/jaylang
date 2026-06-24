@@ -174,6 +174,7 @@ module Of_logger (Log : Utils.Logger.FULL with type B.a = Stat.t) : S with type 
     *)
 
     let eval : Status.Terminal.t Cmdliner.Cmd.t =
+      Utils.Etc.set_1M_minor_heap ();
       let open Cmdliner in
       let open Cmdliner.Term.Syntax in
       Cmd.v (Cmd.info "ceval") @@

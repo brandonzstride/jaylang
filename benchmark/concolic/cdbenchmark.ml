@@ -177,6 +177,7 @@ let cdbench_args =
   n_trials, dirs
 
 let run () =
+  Utils.Etc.set_1M_minor_heap ();
   let open Cmdliner in
   let open Cmdliner.Term.Syntax in
   Cmd.v (Cmd.info "cdbenchmark") @@
