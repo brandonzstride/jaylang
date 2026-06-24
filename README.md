@@ -58,6 +58,8 @@ opam install . --deps-only --with-test --with-dev-setup
 
 Now you are ready to develop in the project.
 
+(To _create_ the opam file, run `dune build @opam`, and if dune reports a diff, then accept it by running `dune promote` to get the `jay.opam` file.)
+
 ## Run
 
 ### Concolic evaluator
