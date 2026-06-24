@@ -1,6 +1,6 @@
 open Lexing
 
-exception Parse_error of exn * int * int * string
+exception Parse_error of string * int * int * string
 
 module type PARSING_DESC = sig
   type token
@@ -19,7 +19,7 @@ module Make(ParsingDesc : PARSING_DESC) = struct
       let line = curr.pos_lnum in
       let column = curr.pos_cnum - curr.pos_bol in
       let tok = lexeme buf in
-      raise @@ Parse_error (exn, line, column, tok)
+      raise @@ Parse_error (Printexc.to_string exn, line, column, tok)
 
   let parse_program (input : in_channel) : ParsingDesc.statement list =
     let buf = Lexing.from_channel input in
