@@ -123,6 +123,8 @@ the language and which lines are erased.
 %nonassoc prec_if             /* Conditionals */
 (*! scope bluejay desugared !*)
 %nonassoc prec_mu             /* mu types */
+%nonassoc OF                  /* variant type declarations */
+%right PIPE                   /* variant type separator */
 (*! endscope !*)
 %left PIPELINE                /* |> */
 %right DOUBLE_PIPE            /* || for boolean or */
@@ -138,7 +140,6 @@ the language and which lines are erased.
 (*! scope bluejay !*)
 %left AMPERSAND
 (*! endscope !*)
-%right prec_variant           /* variants, lists */
 (*! scope bluejay desugared !*)
 %right ARROW                  /* -> for type declaration */
 (*! endscope !*)
@@ -217,7 +218,7 @@ expr:
   (*! endscope !*)
   | IF expr THEN expr ELSE expr %prec prec_if
       { EIf { cond = $2 ; true_body = $4 ; false_body = $6 } : t }
-  | FUNCTION l_ident ARROW expr %prec prec_fun 
+  | FUNCTION l_ident ARROW expr %prec prec_fun
       { EFunction { param = $2 ; body = $4 } : t }
   (*! scope bluejay !*)
   | FUNCTION l_ident param_list ARROW expr %prec prec_fun
@@ -249,7 +250,7 @@ expr:
   | LET l_ident EQUALS expr IN expr %prec prec_let
       { ELet { var = $2 ; defn = $4 ; body = $6 } : t }
   | LET_BIND l_ident EQUALS expr IN expr %prec prec_let (* this is desugared in place, which is a little ugly... *)
-      { EAppl { func = EAppl { func = EVar (Ident "bind") ; arg = $4 } ; arg = EFunction { param = $2 ; body = $6 }} : t } 
+      { EAppl { func = EAppl { func = EVar (Ident "bind") ; arg = $4 } ; arg = EFunction { param = $2 ; body = $6 }} : t }
   // Functions
   (*! scope bluejay !*)
   | letfun_rec IN expr %prec prec_fun
@@ -273,11 +274,15 @@ expr:
   | OPEN_PAREN l_ident COLON expr CLOSE_PAREN
       { ($2, $4) }
 
+variant_type_body:
+  | label=variant_type_label OF payload=expr
+    { [ label, payload ] }
+  | label=variant_type_label OF payload=expr PIPE rest=variant_type_body
+    { (label, payload) :: rest }
+
 %inline type_expr:
-  | PIPE separated_nonempty_list(PIPE, single_variant_type) (* pipe optional before first variant *)
-      { ETypeVariant $2 : t }
-  | separated_nonempty_list(PIPE, single_variant_type)
-      { ETypeVariant $1 : t }
+  | ioption(PIPE) v_type=variant_type_body
+      { ETypeVariant v_type : t }
   | MU l_ident list(l_ident) DOT expr %prec prec_mu
       { ETypeMu { var = $2 ; params = $3 ; body = $5 } : t}
   | expr ARROW expr
@@ -317,9 +322,6 @@ expr:
 (*! endscope !*)
 
 (*! scope bluejay desugared !*)
-
-single_variant_type:
-  | variant_type_label OF expr %prec prec_variant { $1, $3 }
 
 record_type_or_refinement:
   (* exactly one label *)
@@ -364,7 +366,7 @@ fun_sig:
       { FUntyped { func_id = $1 ; params = $2 ; defn = $4 } : funsig }
   | ident param_list_with_type COLON expr EQUALS expr
       { FTyped { type_vars = [] ; func_id = $1 ; params = $2 ; ret_type = $4 ; defn = $6 } : funsig }
-  | ident OPEN_PAREN TYPE param_list CLOSE_PAREN param_list_with_type COLON expr EQUALS expr 
+  | ident OPEN_PAREN TYPE param_list CLOSE_PAREN param_list_with_type COLON expr EQUALS expr
       { FTyped { type_vars = $4 ; func_id = $1 ; params = $6 ; ret_type = $8 ; defn = $10 } : funsig }
 
 (*! endscope !*)
@@ -375,6 +377,8 @@ fun_sig:
 appl_expr:
   | appl_expr primary_expr { EAppl { func = $1 ; arg = $2 } : t }
   | DEFER primary_expr { EDefer $2 : t }
+  | variant_label primary_expr
+      { EVariant { label = $1 ; payload = $2 } : t }
   (*! scope bluejay !*)
   | ASSERT primary_expr
       { EAssert $2 : t }
@@ -479,8 +483,6 @@ primary_expr:
 ;
 
 op_expr:
-  | variant_label expr %prec prec_variant
-      { EVariant { label = $1 ; payload = $2 } : t }
   | expr ASTERISK expr
       { EBinop { left = $1 ; binop = BTimes ; right = $3 } : t }
   | expr SLASH expr
@@ -588,7 +590,7 @@ variant_label:
   | BACKTICK ident { VariantLabel.VariantLabel $2 }
 
 (*! scope bluejay desugared !*)
-/* e.g. ``Variant int */ 
+/* e.g. ``Variant int */
 variant_type_label:
   | BACKTICK ident { VariantTypeLabel.VariantTypeLabel $2 }
 (*! endscope !*)
