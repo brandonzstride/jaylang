@@ -30,7 +30,7 @@ let eager_eval
     | EUnit -> return VUnit
     | EVar id -> fetch id
     | EFunction { param ; body } ->
-      let* env = read_env in
+      let* env = read in
       return @@ VFunClosure { param ; closure = { body ; env } }
     | EVariant { label ; payload = e_payload } ->
       let* payload = eval e_payload in

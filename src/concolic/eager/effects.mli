@@ -3,7 +3,7 @@ open Common
 
 (*
   ------------
-  MONAD BASICS 
+  MONAD BASICS
   ------------
 *)
 
@@ -22,8 +22,8 @@ val fetch : Lang.Ast.Ident.t -> Value.t m
 val local : (Value.Env.t -> Value.Env.t) -> 'a m -> 'a m
 (** [local f m] runs [m] under the local environment transformed by [f]. *)
 
-val read_env : Value.Env.t m
-(** [read_env] is the environment. *)
+val read : Value.Env.t m
+(** [read] is the environment. *)
 
 (*
   --------------

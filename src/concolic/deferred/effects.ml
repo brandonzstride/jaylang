@@ -51,15 +51,8 @@ module State = struct
     |> List.map fst
 end
 
-module Err = struct
-  include Status.Eval
-  let fail_on_fetch (id : Lang.Ast.Ident.t) (s : State.t) : t * State.t =
-    Status.Unbound_variable (State.inputs s, id), s
-  let fail_on_max_step (_step : int) (s : State.t) : t * State.t =
-    Status.Reached_max_step, s
-end
-
-include Interp_common.Effects.Make (State) (Utils.Builder.Unit_builder) (Value.Env) (Err)
+include Interp_common.Monad
+include Interp_common.Monad.Specialize (State) (Value.Env) (Status.Eval)
 
 (*
   -----
@@ -96,8 +89,8 @@ include Interp_common.Effects.Make (State) (Utils.Builder.Unit_builder) (Value.E
   Maps the deferred proof for the given symbol and moves it from a pending proof into the symbol environment.
 *)
 let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb)
-    (f : Lang.Ast.Embedded.t -> (Value.whnf, 'e) t) : (Value.whnf, 'e) t =
-  { run = fun ~reject ~accept state step () _ ->
+    (f : Lang.Ast.Embedded.t -> Value.whnf m) : Value.whnf m =
+  { run = fun ~reject ~accept state step _ ->
     (* Get the deferred proof for the symbol from the current state. *)
     match Value.Pending_proofs.pop symb state.pending_proofs with
     | None -> failwith "Invariant failure: popping symbol that does not exist in the symbol map"
@@ -108,9 +101,8 @@ let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb)
       (f closure.body).run
         { state with time = t ; pending_proofs = to_keep }
         step
-        ()
         closure.env
-        ~reject ~accept:(fun v final_state final_step () ->
+        ~reject ~accept:(fun v final_state final_step ->
           accept v { final_state with
             time = state.time (* Restore original time now that f is done. *)
           ; pending_proofs =
@@ -118,15 +110,12 @@ let[@inline always] map_deferred_proof (VSymbol t as symb : Value.symb)
               final_state.pending_proofs (* Keep all the proofs after f finished running ... *)
               to_add_back (* ... and put back the proofs we hid from f *)
           ; symbol_map = Time_map.add t v final_state.symbol_map
-          } final_step ()
+          } final_step
         )
   }
 
 let incr_time : unit m =
-  modify (fun s -> { s with time = Timestamp.increment s.time })
-
-let push_time : unit m =
-  modify (fun s -> { s with time = Timestamp.push s.time })
+  modify (fun (s : State.t) -> { s with time = Timestamp.increment s.time })
 
 (*
   We must count stern steps instead of using total step count to
@@ -140,23 +129,34 @@ let push_time : unit m =
 let incr_n_stern_steps : unit m =
   modify State.incr_stern_step
 
+let[@inline] incr_step ~max_step =
+  incr_step ~max_step ~fail_on_max:(fun state -> Status.Reached_max_step, state)
+
+let[@inline] fetch (id : Lang.Ast.Ident.t) : Value.t m =
+  { run = fun ~reject ~accept state step env ->
+      match Value.Env.fetch id env with
+      | None -> reject (Status.Unbound_variable (State.inputs state, id)) state step
+      | Some v -> accept v state step
+  }
+
 (*
   Maps an arbitrary deferred proof dictated by the number of stern steps.
   We use bitwise arithmetic to work on a deferred proof every 32nd stern step.
 
   Uses the monad structure to partially eval a few binds.
 *)
-let[@inline always] optionally_map_some_deferred_proof (f : Lang.Ast.Embedded.t -> (Value.whnf, 'e) t) : (unit, 'e) t =
-  { run = fun ~reject ~accept state step () r ->
+let[@inline always] optionally_map_some_deferred_proof
+    (f : Lang.Ast.Embedded.t -> Value.whnf m) : unit m =
+  { run = fun ~reject ~accept state step env ->
     if Step.to_int state.n_stern_steps land 31 = 0 (* quick way to check it is 0 mod 32 *)
     && not (Time_map.is_empty state.pending_proofs) (* ... and there is some pending proof we can work on *)
     then
       let (t, _) = Time_map.choose state.pending_proofs in
-      (map_deferred_proof (VSymbol t) f).run ~reject ~accept:(fun _ final_state final_step () ->
-        accept () final_state final_step ()
-      ) state step () r
+      (map_deferred_proof (VSymbol t) f).run ~reject ~accept:(fun _ final_state final_step ->
+        accept () final_state final_step
+      ) state step env
     else
-      accept () state step ()
+      accept () state step
   }
 
 (*
@@ -165,8 +165,10 @@ let[@inline always] optionally_map_some_deferred_proof (f : Lang.Ast.Embedded.t 
   ------
 *)
 
-let fail_and_filter (err : State.t -> Err.t) : 'a m =
-  { run = fun ~reject ~accept:_ state step () _ -> reject (err state) (State.remove_greater_symbols state) step () }
+let fail_and_filter (err : State.t -> Status.Eval.t) : 'a m =
+  { run = fun ~reject ~accept:_ state step _ ->
+      reject (err state) (State.remove_greater_symbols state) step
+  }
 
 (* timestamp payload on error is just for printing. It is not used in tracking at all *)
 let abort (msg : string) : 'a m =
@@ -181,41 +183,42 @@ let type_mismatch (msg : string) : 'a m =
   ---------------
 *)
 
-(* let lookup (Value.VSymbol t : Value.symb) : Value.whnf option m =
-  { run = fun ~reject:_ ~accept state step () _ -> accept (Time_map.find_opt t state.symbol_map) state step () } *)
-
 let vanish : 'a m =
   fail_and_filter (fun _ -> Status.Finished)
 
 let push_branch (dir : k Direction.t) : unit m =
   if Smt.Formula.is_const @@ Direction.to_formula dir
   then return ()
-  else modify (fun s -> { s with path = Path.cons dir s.path })
+  else modify (fun (s : State.t) -> { s with path = Path.cons dir s.path })
 
 let[@inline always] defer (body : Lang.Ast.Embedded.t) : Value.t m =
   { run =
-    fun ~reject:_ ~accept state step () env ->
+    fun ~reject:_ ~accept state step env ->
       let symb = Value.VSymbol (Interp_common.Timestamp.push state.time) in
       accept (Value.cast_up symb) { state with
         time = Interp_common.Timestamp.increment state.time
       ; pending_proofs = Value.Pending_proofs.push symb { body ; env } state.pending_proofs
-      } step ()
+      } step
   }
 
-let get_input (type a) (make_key : Timestamp.t -> a Key.Timekey.t) (feeder : Timestamp.t Input_feeder.t) : Value.t m =
+let get_input (type a) (make_key : Timestamp.t -> a Key.Timekey.t)
+    (feeder : Timestamp.t Input_feeder.t) : Value.t m =
   let* state = get in
-  let key = make_key state.time in
+  let key = make_key state.State.time in
   let v = feeder.get key in
   match key with
   | I k ->
-    let* () = modify (fun s -> { s with inputs = (I v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
+    let* () = modify (fun (s : State.t) ->
+        { s with inputs = (I v, s.time) :: s.inputs ; time = Timestamp.increment s.time }
+      )
+    in
     return @@ Value.symbolic_int v k
   | B k ->
-    let* () = modify (fun s -> { s with inputs = (B v, s.time) :: s.inputs ; time = Timestamp.increment s.time }) in
+    let* () = modify (fun (s : State.t) ->
+        { s with inputs = (B v, s.time) :: s.inputs ; time = Timestamp.increment s.time }
+      )
+    in
     return @@ Value.symbolic_bool v k
 
-let run (x : 'a m) : 'a option * Value.Symbol_map.t * Status.Eval.t * k Path.t =
-  match run x State.empty Value.Env.empty with
-  | Ok a, state, _, () ->
-    Some a, state.symbol_map, Status.Finished, state.path
-  | Error e, state, _, () -> None, state.symbol_map, e, state.path
+let run (x : 'a s) =
+  run_safe x State.empty Value.Env.empty

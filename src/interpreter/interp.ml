@@ -44,14 +44,23 @@ module Input_log = struct
     { get }
 end
 
-module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
+module type ENV = sig
+  type value
+  type t
+  val empty : t
+  val fetch : Lang.Ast.Ident.t -> t -> value option
+end
+
+module CPS_Error_M (Env : ENV) = struct
   module State = struct
     type t =
       { time : Interp_common.Timestamp.t
+      ; log : Input_log.t
       ; n_inputs : int }
 
-    let initial : t =
+    let empty : t =
       { time = Interp_common.Timestamp.initial
+      ; log = Input_log.empty
       ; n_inputs = 0 }
   end
 
@@ -60,36 +69,39 @@ module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
   module Err = struct
     (* Not putting state in the error because it's returned anyways *)
     type t = unit Interp_common.Errors.Runtime.t
-
-    let fail_on_fetch (id : Ident.t) (s : State.t) : t * State.t =
-      `XUnbound_variable (id, ()), s
-
-    let fail_on_max_step (_step : int) (s : State.t) : t * State.t =
-      `XReach_max_step (), s
   end
 
-  include Interp_common.Effects.Make (State) (Input_log) (Env) (Err)
+  include Interp_common.Monad
+  include Interp_common.Monad.Specialize (State) (Env) (Err)
+
+  let incr_step : unit m =
+    incr_step ~max_step ~fail_on_max:(fun state -> `XReach_max_step (), state)
 
   let incr_time : unit m =
-    modify (fun s -> { s with time = Interp_common.Timestamp.increment s.time })
+    modify (fun (s : State.t) ->
+      { s with time = Interp_common.Timestamp.increment s.time }
+    )
 
   let push_time : unit m =
-    modify (fun s -> { s with time = Interp_common.Timestamp.push s.time })
+    modify (fun (s : State.t) ->
+      { s with time = Interp_common.Timestamp.push s.time }
+    )
 
   let abort (type a) (msg : string) : a m =
-    fail @@ `XAbort { msg ; body = () }
+    escape @@ `XAbort { Interp_common.Errors.msg ; body = () }
 
   (* unit is needed to surmount the value restriction *)
   let vanish (type a) (() : unit) : a m =
-    let* s = get in
+    let* (s : State.t) = get in
     Format.printf "Vanishing at time %s\n" (Interp_common.Timestamp.to_string s.time);
-    fail @@ `XVanish ()
+    escape @@ `XVanish ()
 
   let type_mismatch (type a) (() : unit) : a m =
-    fail @@ `XType_mismatch { msg = "No type mismatch message today, sorry" ; body = () }
+    escape @@ `XType_mismatch { Interp_common.Errors.msg =
+      "No type mismatch message today, sorry" ; body = () }
 
   let unbound_variable (type a) (id : Ident.t) : a m =
-    fail @@ `XUnbound_variable (id, ())
+    escape @@ `XUnbound_variable (id, ())
 
   let list_map (f : 'a -> 'b m) (ls : 'a list) : 'b list m =
     List.fold_right (fun a acc_m ->
@@ -99,25 +111,27 @@ module CPS_Error_M (Env : Interp_common.Effects.ENV) = struct
     ) ls (return [])
 
   let using_env (f : Env.t -> 'a) : 'a m =
-    let* env = read_env in
+    let* env = read in
     return (f env)
 
   let log_input (input : Interp_common.Input.t) : unit m =
-    let* { time ; _ } = get in
-    let* () = modify (fun s -> { s with n_inputs = s.n_inputs + 1 }) in
-    log (input, time)
+    let* { State.time ; _ } = get in
+    modify (fun (s : State.t) -> { s with n_inputs = s.n_inputs + 1 ;
+      log = Input_log.cons (input, time) s.log
+    })
 
   let n_inputs : int m =
     let* s = get in
-    return s.n_inputs
+    return s.State.n_inputs
 
   let with_time_snapback (x : 'a m) : 'a m =
     let* s = get in
     let* a = x in (* runs x with original time *)
-    let* () = modify (fun s' -> { s' with time = s.time }) in
+    let* () = modify (fun s' -> { s' with State.time = s.State.time }) in
     return a
 
-  let get_input (type a) (fkey : int -> a Interp_common.Key.Indexkey.t) (pack : a -> Interp_common.Input.t) (feeder : int Feeder.t) : a m =
+  let get_input (type a) (fkey : int -> a Interp_common.Key.Indexkey.t)
+      (pack : a -> Interp_common.Input.t) (feeder : int Feeder.t) : a m =
     let* n = n_inputs in
     let a = feeder.get (fkey n) in
     let* () = log_input (pack a) in
@@ -134,18 +148,18 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
   end in
   let open CPS_Error_M (E) in
   let rec eval (e : a Expr.t) : a V.t m =
-    let* () = incr_step ~max_step in
+    let* () = incr_step in
     match e with
     (* direct values *)
     | EUnit -> return VUnit
     | EInt i -> return (VInt i)
     | EBool b -> return (VBool b)
-    | EVar id -> begin
-        let* env = read_env in
-        match Env.fetch id env with
+    | EVar id ->
+        let* env = read in
+        begin match Env.fetch id env with
         | None -> unbound_variable id
         | Some v -> return v
-      end
+        end
     | ETypeInt -> return VTypeInt
     | ETypeBool -> return VTypeBool
     | ETypeTop -> return VTypeTop
@@ -254,7 +268,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     | ELet { var ; defn ; body } -> eval_let var ~defn ~body
     | ELetTyped { typed_var = { var ; _ } ; defn ; body ; _ } -> eval_let var ~defn ~body
     | ETypeMu { var ; params ; body } ->
-      let* env = read_env in
+      let* env = read in
       let rec rec_env = lazy (
         Env.add var (VTypeMu { var ; params ; closure = { body ; env = rec_env } }) env
       )
@@ -364,7 +378,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       end
     (* let funs *)
     | ELetFunRec { funcs ; body } -> begin
-        let* env = read_env in
+        let* env = read in
         let rec rec_env = lazy (
           List.fold_left (fun acc fsig ->
             let comps = Lang.Ast_tools.Funsig.to_components fsig in
@@ -421,7 +435,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
             let comps = Lang.Ast_tools.Funsig.to_components fsig in
             match Lang.Ast_tools.Utils.abstract_over_ids comps.params comps.defn with
             | EFunction { param ; body } ->
-              let* env = read_env in
+              let* env = read in
               let v = VFunClosure { param ; closure = { body ; env = lazy env } } in
               local (Env.add comps.func_id v) (
                 fold_stmts (return (RecordLabel.Map.add (RecordLabel.RecordLabel comps.func_id) v acc)) tl
@@ -431,7 +445,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         | SFunRec fsigs :: tl ->
           let* acc = acc_m in
           let func_comps = List.map Lang.Ast_tools.Funsig.to_components fsigs in
-          let* env = read_env in
+          let* env = read in
           let rec rec_env = lazy (
               List.fold_left (fun acc comps ->
                 let params = comps.Lang.Ast_tools.Function_components.params in
@@ -460,16 +474,20 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
     return (VModule module_body)
   in
 
-  (run (eval e) State.initial Env.empty)
-  |> fun (res, _, _, timed_inputs) ->
-  (match res with
-   | Ok r -> Format.printf "OK:\n  %s\n" (V.to_string r); r
-   | Error `XType_mismatch { Interp_common.Errors.msg = _ ; body = () } -> Format.printf "TYPE MISMATCH\n"; VTypeMismatch
-   | Error `XAbort  { Interp_common.Errors.msg ; body = () } -> Format.printf "FOUND ABORT %s\n" msg; VAbort
-   | Error `XVanish () -> Format.printf "VANISH\n"; VVanish
-   | Error `XUnbound_variable (Lang.Ast.Ident.Ident s, ()) -> Format.printf "UNBOUND VARIBLE %s\n" s; VUnboundVariable (Ident s)
-   | Error `XReach_max_step () -> Format.printf "REACHED MAX STEP\n"; VVanish
-  ), timed_inputs
+  let res, { State.log ; _ }, _ = run (eval e) State.empty Env.empty in
+  let e =
+    match res with
+    | Ok r -> Format.printf "OK:\n  %s\n" (V.to_string r); r
+    | Error `XType_mismatch { Interp_common.Errors.msg = _ ; body = () } ->
+      Format.printf "TYPE MISMATCH\n"; VTypeMismatch
+    | Error `XAbort  { Interp_common.Errors.msg ; body = () } ->
+      Format.printf "FOUND ABORT %s\n" msg; VAbort
+    | Error `XVanish () -> Format.printf "VANISH\n"; VVanish
+    | Error `XUnbound_variable (Lang.Ast.Ident.Ident s, ()) ->
+      Format.printf "UNBOUND VARIBLE %s\n" s; VUnboundVariable (Ident s)
+    | Error `XReach_max_step () -> Format.printf "REACHED MAX STEP\n"; VVanish
+  in
+  e, log
 
 let eval_pgm
     (type a)

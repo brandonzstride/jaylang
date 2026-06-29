@@ -9,8 +9,8 @@ let deval
   =
   let expr = Lang.Ast_tools.Utils.pgm_to_module pgm in
   match Concolic.Deferred.Main.deferred_interp expr feeder ~max_step with
-  | Some v, env, _, _ -> Ok (Value.of_concolic v env)
-  | None, _, status, _ -> Error (
+  | Ok v, state, _ -> Ok (Value.of_concolic v state.symbol_map)
+  | Error status, _, _ -> Error (
     match status with
     | Concolic.Common.Status.Type_mismatch (_, msg) ->
       `XType_mismatch { Interp_common.Errors.msg ; body = () }

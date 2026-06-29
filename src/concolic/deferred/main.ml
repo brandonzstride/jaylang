@@ -4,15 +4,7 @@
 open Lang.Ast
 open Common
 
-type 'a res =
-  | V of 'a Value.v
-  | E of Effects.Err.t
-
-let res_to_err (type a) (x : a res Effects.s) : a Value.v Effects.m =
-  Effects.bind (Effects.make_unsafe x) (function
-      | V v -> Effects.return v
-      | E e -> Effects.fail e
-    )
+type 'a res = ('a Value.v, Status.Eval.t) result
 
 let deferred_interp expr input_feeder ~max_step =
   let open Effects in
@@ -116,7 +108,7 @@ let deferred_interp expr input_feeder ~max_step =
       end
     (* closures and applications *)
     | EFunction { param ; body } ->
-      let* env = read_env in
+      let* env = read in
       return (VFunClosure { param ; closure = { body ; env }})
     | ELet { var ; defn ; body } ->
       let* v = eval defn in
@@ -144,9 +136,9 @@ let deferred_interp expr input_feeder ~max_step =
       return (VVariant { label ; payload = v })
     | EModule stmt_ls ->
       let* module_body =
-        let rec fold_stmts acc_m : Embedded.statement list -> Value.t Lang.Ast.RecordLabel.Map.t m = function
+        let rec fold_stmts acc_m = function
           | [] -> acc_m
-          | SUntyped { var ; defn } :: tl ->
+          | Lang.Ast.Expr.SUntyped { var ; defn } :: tl ->
             let* acc = acc_m in
             let* v = eval defn in
             local (Env.add var v) (
@@ -183,7 +175,7 @@ let deferred_interp expr input_feeder ~max_step =
       Value.split v
         ~symb:(fun ((VSymbol t) as sym) ->
             let* s = get in
-            match Time_map.find_opt t s.symbol_map with
+            match Time_map.find_opt t s.State.symbol_map with
             | Some v -> return v
             | None -> map_deferred_proof sym stern_eval
           )
@@ -194,33 +186,34 @@ let deferred_interp expr input_feeder ~max_step =
 
   (*
     This does not monadically error.
-    Any error is packed into Res, so there is no implicit error propagation.
+    Any error is packed into result, so there is no implicit error propagation.
     This is helpful because we don't want errors propagating and messing with
     the cleanup in our stern semantics, where we must evaluate everything and
     keep the smallest error.
   *)
   and clean_up_deferred (final : Value.ok res) : Value.ok res s =
     let* s = get in
-    match Time_map.choose_opt s.pending_proofs with
+    match Time_map.choose_opt s.State.pending_proofs with
     | None -> return final (* done! can finish with how we're told to finish *)
     | Some (t, _) -> (* some cleanup to do, so do it, and then keep looping after that *)
       (* Do some cleanup by running this timestamp *)
       handle_error (map_deferred_proof (VSymbol t) stern_eval)
         (fun _ -> clean_up_deferred final) (* ignore value of deferred proof because we already have the final value *)
-        (fun e -> clean_up_deferred (E e)) (* deferred proof errored, so it must be the smaller error, so keep it and continue *)
+        (fun e -> clean_up_deferred (Error e)) (* deferred proof errored, so it must be the smaller error, so keep it and continue *)
   in
 
   let begin_stern_loop (expr : Embedded.t) : Value.ok res s =
     let* r =
       handle_error (stern_eval expr)
-        (fun v -> return (V v))
-        (fun e -> return (E e))
+        (fun v -> return (Ok v))
+        (fun e -> return (Error e))
     in
     clean_up_deferred r
   in
 
-  run (res_to_err (begin_stern_loop expr))
+  run (begin_stern_loop expr)
 
 let deferred_eval expr input_feeder ~max_step =
-  let (_ : Value.whnf option), (_ : Value.Symbol_map.t), e, p = deferred_interp expr input_feeder ~max_step in
-  e, p
+  match deferred_interp expr input_feeder ~max_step with
+  | Ok _, state, _ -> Status.Finished, state.path
+  | Error e, state, _ -> e, state.path
