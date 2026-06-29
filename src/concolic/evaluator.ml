@@ -103,7 +103,7 @@ module Make (K : Smt.Symbol.KEY) (Make_tq : Target_queue.MAKE)
 
   let c_loop ~(options : Options.t) (eval : K.t eval) (solve : K.t Smt.Solve.solver)
       (e : Lang.Ast.Embedded.t) : Status.Terminal.t Log.m =
-    if not options.is_random then Interp_common.Rand.reset ();
+    if options.is_random then Random.self_init () else Interp_common.Rand.reset ();
     let lifted_timeout t f =
       let* x = Log.bind (return ()) (fun () ->
           Log.return (Utils.Time.with_timeout t f)

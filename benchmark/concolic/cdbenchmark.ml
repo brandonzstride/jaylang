@@ -188,14 +188,14 @@ let run () =
   Format.set_formatter_out_channel oc_null;
   let runtest_eager pgm =
     Driver.Eager.test_some_program
-      ~options:{ options with is_random = true }
+      ~options
       ~do_wrap:true        (* always wrap during benchmarking *)
       ~do_type_splay:No    (* never type splay during benchmarking *)
       pgm
   in
   let runtest_deferred pgm =
     Driver.Deferred.test_some_program
-      ~options:{ options with is_random = true }
+      ~options
       ~do_wrap:true        (* always wrap during benchmarking *)
       ~do_type_splay:No    (* never type splay during benchmarking *)
       pgm

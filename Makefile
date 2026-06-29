@@ -1,11 +1,5 @@
 .PHONY: all always clean translator jil logclean cbenchmark repl sctest
 
-BUILD = _build/default
-BUILD_SRC = _build/default/src
-BUILD_BIN = _build/default/src/bin
-BUILD_TEST = _build/default/src-test
-BENCH_C = benchmark/concolic
-
 dune-build: always
 	dune build
 
@@ -63,6 +57,9 @@ test-tools:
 	dune exec -- src-test/tools/test_tools.exe
 
 # benchmark
+
+BENCH_C = benchmark/concolic
+ARGS = -r
 
 cbenchmark:
 	dune exec --profile=release $(BENCH_C)/cbenchmark.exe -- $(ARGS)
