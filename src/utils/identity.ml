@@ -21,9 +21,3 @@ module Monad : Types.MONAD with type 'a m = 'a = struct
   let[@inline always] bind x f = f x
   let ( let* ) = bind
 end
-
-module Transformer (M : Types.MONAD) : Types.TRANSFORMED with type 'a m = 'a M.m and type 'a lower := 'a M.m = struct
-  include M
-  let upper m = m
-  let map_t f = f
-end
