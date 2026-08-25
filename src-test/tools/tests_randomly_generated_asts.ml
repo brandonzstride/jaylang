@@ -34,6 +34,44 @@ and 'a statement_gen = ctx : 'a context -> 'a statement
 
 let ident_chars = ['a';'b';'c';'d';'e';'f';'g';'h';'i';'j';'k';'l';'m';'n';'o';'p';'q';'r';'s';'t';'u';'v';'w';'x';'y';'z']
 
+(* We enumerate keywords to avoid picking them as variable names. *)
+let keywords = [
+  "and";
+  "assert";
+  "assume";
+  "bool";
+  "bottom";
+  "defer";
+  "dep";
+  "dependent";
+  "else";
+  "end";
+  "false";
+  "fun";
+  "function";
+  "if";
+  "in";
+  "input";
+  "int";
+  "let";
+  "list";
+  "match";
+  "mu";
+  "not";
+  "of";
+  "rec";
+  "sig";
+  "singlet";
+  "struct";
+  "then";
+  "top";
+  "true";
+  "type";
+  "unit";
+  "val";
+  "with";
+]
+
 let pick_int ~(ctx : 'a context) ~(min:int) ~(max:int) : int =
   Random.State.int ctx.rand_state (max-min) + min
 
@@ -48,27 +86,56 @@ let pick_from ~(ctx : 'a context) (options : 'b list) : 'b =
 let pick_char ~(ctx : 'a context) (options : char list) : char =
   pick_from ~ctx options
 
-let pick_list
-    (type a)
-    ?(min_len:int=1) ?(max_len:int=5) ~(ctx : _ context) (f : unit -> a)
-  : a list =
-  let rec loop n : a list =
-    if n = 0 then [] else
-      f () :: loop (n-1)
+let rec pick_list :
+    type a.
+    ?min_len:int ->
+    ?max_len:int -> 
+    ?exclude:(a list list * (a -> a -> int)) option ->
+    ctx:(_ context) ->
+    (unit -> a) ->
+    a list =
+    fun ?(min_len=1) ?(max_len=5) ?(exclude=None) ~(ctx) f ->
+  let result : a list =
+    let rec loop n : a list =
+      if n = 0 then [] else
+        f () :: loop (n-1)
+    in
+    loop (pick_int ~ctx ~min:min_len ~max:max_len)
   in
-  loop (pick_int ~ctx ~min:min_len ~max:max_len)
+  match exclude with
+  | None -> result
+  | Some(exclusions, comparer) ->
+    let rec loop : a list -> a list list -> a list =
+      fun x xs ->
+      match xs with
+      | [] ->
+        result
+      | x'::xs' ->
+        if List.compare comparer x x' = 0 then
+          pick_list ~min_len ~max_len ~exclude ~ctx f
+        else
+          loop x xs'
+    in
+    loop result exclusions
 
-let pick_string
-    ?(min_len:int=1) ?(max_len:int=5) ~(ctx : 'a context) () : string =
+let rec pick_string
+    ?(min_len:int=1)
+    ?(max_len:int=5)
+    ?(exclude:string list=[])
+    ~(ctx : 'a context) () : string =
   let chars = pick_list
-      ~min_len ~max_len ~ctx
+      ~min_len ~max_len ~exclude:None ~ctx
       (fun () -> pick_char ~ctx ident_chars)
   in
-  String.of_seq (List.to_seq chars)
+  let result = String.of_seq (List.to_seq chars) in
+  if List.mem result exclude then
+    pick_string ~min_len ~max_len ~exclude ~ctx ()
+  else
+    result
 
 let pick_ident
     ?(min_len:int=1) ?(max_len:int=5) ~(ctx : 'a context) () : Ident.t =
-  Ident(pick_string ~min_len ~max_len ~ctx ())
+  Ident(pick_string ~min_len ~max_len ~exclude:keywords ~ctx ())
 
 let pick_record_label
     ?(min_len:int=1) ?(max_len:int=5) ~(ctx : 'a context) () : RecordLabel.t =
@@ -224,7 +291,7 @@ let rand_EProject : 'a expr_gen = fun ~ctx ->
 let rand_ERecord : 'a expr_gen = fun ~ctx ->
   ERecord(
     RecordLabel.Map.of_list @@ pick_list ~ctx
-        (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx))
+      (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx))
   )
 
 let rand_EModule : 'a expr_gen = fun ~ctx ->
@@ -292,7 +359,7 @@ let rand_ETypeUnit : 'a expr_gen = fun ~ctx ->
 let rand_ETypeRecord : 'a expr_gen = fun ~ctx ->
   ETypeRecord(
     RecordLabel.Map.of_list @@ pick_list ~ctx
-        (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx))
+      (fun () -> (pick_record_label ~ctx (), pick_expr ~ctx))
   )
 
 let rand_ETypeModule : 'a expr_gen = fun ~ctx ->
@@ -344,7 +411,7 @@ let rand_EAssume : 'a expr_gen = fun ~ctx ->
 
 let rand_EMultiArgFunction : 'a expr_gen = fun ~ctx ->
   EMultiArgFunction
-    { params = pick_list ~ctx (fun () -> pick_ident ~ctx ());
+    { params = pick_list ~min_len:2 ~ctx (fun () -> pick_ident ~ctx ());
       body = pick_expr ~ctx;
     }
 
