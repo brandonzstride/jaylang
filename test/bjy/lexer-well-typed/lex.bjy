@@ -1,0 +1,228 @@
+(* TEST
+  include exhaust;
+*)
+
+let string = list int
+let eof = -1
+
+let rec list_eq cmp xs ys =
+  match xs with
+  | [] ->
+    match ys with
+    | [] -> true
+    | _ :: _ -> false
+    end
+  | x :: xs2 ->
+    match ys with
+    | [] -> false
+    | y :: ys2 ->
+      if cmp x y then list_eq cmp xs2 ys2 else false
+    end
+  end
+
+let Tree = mu Tree.
+  | `EInt of int
+  | `EVar of string
+  | `EOpPlus of Tree * Tree
+  | `EOpMinus of Tree * Tree
+  | `EOpTimes of Tree * Tree
+  | `EAfter of Tree
+  | `EBefore of Tree
+  | `ELet of {var: string; e1:Tree; e2:Tree}
+  | `Invalid of int
+
+let InvalidToken =
+  | `UnsignaledEof of unit
+  | `NoMatch of { text: string }
+
+let Token =
+  | `TokMult of unit
+  | `TokPlus of unit
+  | `TokInt of string
+  | `TokVar of string
+  | `TokMinus of unit
+  | `TokOpenParen of unit
+  | `TokCloseParen of unit
+  | `TokLet of unit
+  | `TokIn of unit
+  | `TokEqual of unit
+  | `TokAfter of unit
+  | `TokBefore of unit
+  | `TokEof of unit
+  | `Invalid of InvalidToken
+
+let TokenizeError =
+  | `TESpecific of { site: int; wanted: string; had: string }
+  | `TENoCharsFound of { site: int }
+
+let TokenizeResult = `Success of {remaining:string; tok:Token}
+                   | `Failure of TokenizeError
+
+let tok_eq a b =
+  match a with
+  | `TokMult u1 -> match b with | `TokMult u2 -> true | _ -> false end
+  | `TokPlus u1 -> match b with | `TokPlus u2 -> true | _ -> false end
+  | `TokInt s1 -> match b with | `TokInt s2 -> list_eq (fun x y -> x == y) s1 s2
+                               | _ -> false end
+  | `TokVar s1 -> match b with | `TokVar s2 -> list_eq (fun x y -> x == y) s1 s2
+                               | _ -> false end
+  | `TokMinus u1 -> match b with | `TokMinus u2 -> true | _ -> false end
+  | `TokOpenParen u1 -> match b with | `TokOpenParen u2 -> true | _ -> false end
+  | `TokCloseParen u1 -> match b with | `TokCloseParen u2 -> true | _ -> false end
+  | `TokLet u1 -> match b with | `TokLet u2 -> true | _ -> false end
+  | `TokIn u1 -> match b with | `TokIn u2 -> true | _ -> false end
+  | `TokEqual u1 -> match b with | `TokEqual u2 -> true | _ -> false end
+  | `TokAfter u1 -> match b with | `TokAfter u2 -> true | _ -> false end
+  | `TokBefore u1 -> match b with | `TokBefore u2 -> true | _ -> false end
+  | `TokEof u1 -> match b with | `TokEof u2 -> true | _ -> false end
+  | `Invalid n1 -> match b with | `Invalid n2 -> n1 == n2 | _ -> false end
+  end
+
+let compose_success f g chars =
+  match f chars with
+  | `Success x -> `Success x
+  | `Failure _ -> g chars
+  end
+
+let nonempty_list lst =
+  match lst with
+  | [] -> false
+  | _ :: _ -> true
+  end
+
+let tokenize_exact
+    (expected : string) (tok : Token) (actual : string)
+    : TokenizeResult =
+    let rec loop (expected : string) (actual : string) : TokenizeResult =
+      match expected with
+      | [] -> `Success { remaining = actual; tok = tok }
+      | expected_char :: expected_rest ->
+        match actual with
+        | [] -> `Failure (`TESpecific { site = 1; wanted = expected; had = actual })
+        | actual_char :: actual_rest ->
+          if expected_char == actual_char then
+            loop expected_rest actual_rest
+          else
+            `Failure (`TESpecific { site = 2; wanted = expected; had = actual })
+        end
+      end
+    in
+    loop expected actual
+
+let tokenize_mult = tokenize_exact [ 42 ] (`TokMult ())
+let tokenize_plus = tokenize_exact [ 43 ] (`TokPlus ())
+let tokenize_minus = tokenize_exact [ 45 ] (`TokMinus ())
+let tokenize_openparen = tokenize_exact [ 40 ] (`TokOpenParen ())
+let tokenize_closeparen = tokenize_exact [ 41 ] (`TokCloseParen ())
+let tokenize_equal = tokenize_exact [ 61 ] (`TokEqual ())
+let tokenize_in = tokenize_exact [ 105 ; 110 ] (`TokIn ())
+let tokenize_let = tokenize_exact [ 108 ; 101 ; 116 ] (`TokLet ())
+let tokenize_after = tokenize_exact [ 97 ; 102 ; 116 ; 101 ; 114 ] (`TokAfter ())
+let tokenize_before = tokenize_exact [ 98 ; 101 ; 102 ; 111 ; 114 ; 101 ] (`TokBefore ())
+
+let rev (type a) (l : list a) : list a =
+  let rec aux (acc : list a) (ls : list a) : list a =
+    match ls with
+    | [] -> acc
+    | hd :: tl -> aux (hd :: acc) tl
+    end
+  in
+  aux [] l
+
+let tokenize_while
+    (predicate : int -> int -> bool)
+    (ret : string -> | `Success of Token | `Failure of TokenizeError)
+    (text : string)
+    : TokenizeResult =
+  let rec loop (index : int) (acc : string) (text : string) : TokenizeResult =
+    match text with
+    | [] ->
+      (* Nothing left to parse.  Attempt to use the accumulated string. *)
+      match ret (rev int acc) with
+      | `Success token -> `Success { remaining = text; tok = token }
+      | `Failure x -> `Failure x
+      end
+    | hd :: tl ->
+      if predicate index hd then
+        (* Include this character and keep eating! *)
+        loop (index + 1) (hd :: acc) tl
+      else
+        (* We have a character that doesn't match the predicate.  Use what
+           we have. *)
+        match ret (rev int acc) with
+        | `Success token -> `Success { remaining = text; tok = token }
+        | `Failure x -> `Failure x
+        end
+    end
+  in
+  loop 0 [] text
+
+let tokenize_int =
+  tokenize_while
+    (fun _ c -> 48 <= c && c <= 57)
+    (fun s -> if nonempty_list s then
+                `Success (`TokInt s)
+              else
+                `Failure (`TENoCharsFound {site = 4}))
+
+let tokenize_var =
+  tokenize_while
+    (fun idx c -> (65 <= c && c <= 90) ||   (* upper-case letter *)
+                  (97 <= c && c <= 122) ||  (* lower-case letter *)
+                  (48 <= c && c <= 57 && idx > 0)) (* digit after first pos *)
+    (fun s -> if nonempty_list s then
+                `Success (`TokVar s)
+              else
+                `Failure (`TENoCharsFound {site = 5}))
+
+let rec lex_token (text: string) : list Token =
+  match text with
+  | [] -> [`Invalid (`UnsignaledEof ())]
+  | c :: text_remaining ->
+    if c == -1 then [`TokEof ()] else
+    if c == 32 then lex_token text_remaining else
+    let token =
+      compose_success tokenize_mult
+      (compose_success tokenize_plus
+      (compose_success tokenize_minus
+      (compose_success tokenize_openparen
+      (compose_success tokenize_closeparen
+      (compose_success tokenize_equal
+      (compose_success tokenize_in
+      (compose_success tokenize_let
+      (compose_success tokenize_after
+      (compose_success tokenize_before
+      (compose_success tokenize_int
+      (compose_success tokenize_var
+      (fun x -> `Failure 1)))))))))))) text
+    in
+    match token with
+    | `Success x -> x.tok :: lex_token x.remaining
+    | `Failure y -> [`Invalid (`NoMatch text)]
+    end
+  end
+
+let test_four_space =
+  lex_token [52;32;-1]
+
+let test_four_space_lexes =
+  list_eq tok_eq test_four_space [`TokInt [52]; `TokEof ()]
+
+let test_four_plus_three =
+  lex_token [52;43;51;-1]
+
+let test_four_plus_three_lexes =
+  list_eq tok_eq test_four_plus_three
+    [`TokInt [52]; `TokPlus (); `TokInt [51]; `TokEof ()]
+
+let test_space_four_space_plus_space_three_space =
+  lex_token [32;52;32;43;32;51;32;-1]
+
+let test_space_four_space_plus_space_three_space_lexes =
+  list_eq tok_eq test_space_four_space_plus_space_three_space
+    [`TokInt [52]; `TokPlus (); `TokInt [51]; `TokEof ()]
+
+let z_ALL_TESTS =
+  test_four_space_lexes &&
+  test_four_plus_three_lexes &&
+  test_space_four_space_plus_space_three_space_lexes
