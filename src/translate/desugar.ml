@@ -33,12 +33,12 @@ module LetMonad = struct
       match ty with
       | Untyped -> ELet { var ; defn ; body }
       | Typed { tau ; do_check } ->
-        ELetTyped { typed_var = { var ; tau };
-                    defn;
-                    body;
-                    typed_binding_opts =
-                      TBDesugared { do_check ; do_wrap = true }
-                  }
+        ELetTyped
+          { typed_var = { var ; tau }
+          ; defn
+          ; body
+          ; typed_binding_opts = TBDesugared { do_check ; do_wrap = true }
+          }
   end
 
   include Let_builder (Binding)
@@ -50,7 +50,8 @@ module LetMonad = struct
     tell { ty ; var ; defn }
 end
 
-let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_splay : Splay.t) : Desugared.pgm =
+let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm)
+    ~(do_type_splay : Splay.t) : Desugared.pgm =
   let module Names = (val names) in
   let open LetMonad in
 
@@ -60,8 +61,8 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
     | (EInt _ | EBool _ | EVar _ | EInput | ETypeInt | ETypeBool
       | EType | ETypeTop | ETypeBottom | ETypeSingle | ETypeUnit | EUnit) as e -> e
     (* Simple propogation *)
-    | EBinop { left ; binop ; right } -> begin
-        match binop with
+    | EBinop { left ; binop ; right } ->
+      begin match binop with
         | BAnd -> EIf { cond = desugar left ; true_body = desugar right ; false_body = EBool false }
         | BOr -> EIf { cond = desugar left ; true_body = EBool true ; false_body = desugar right }
         | (BDivide | BModulus) when match right with EInt _ -> false | _ -> true -> (* protect with branch when right is anything but an int literal *)
@@ -107,32 +108,27 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
     | ELetTyped
         { typed_var = { var ; tau }; defn; body;
           typed_binding_opts = TBBluejay } ->
-      ELetTyped { typed_var = { var ; tau = desugar tau };
-                  defn = desugar defn;
-                  body = desugar body;
-                  typed_binding_opts =
-                    TBDesugared { do_check = true; do_wrap = true }
-                }
+      ELetTyped
+        { typed_var = { var ; tau = desugar tau }
+        ; defn = desugar defn
+        ; body = desugar body
+        ; typed_binding_opts = TBDesugared { do_check = true; do_wrap = true }
+        }
     (* Assert/assume *)
     | EAssert assert_expr ->
-      EIf
-        { cond = desugar assert_expr
-        ; true_body = EUnit
-        ; false_body = EAbort (Format.sprintf "Failed assertion: %s" (Expr.to_string assert_expr))
-        }
+      mk_assert
+        (desugar assert_expr)
+        (Format.sprintf "Failed assertion: %s" (Expr.to_string assert_expr))
     | EAssume assume_expr ->
-      EIf
-        { cond = desugar assume_expr
-        ; true_body = EUnit
-        ; false_body = EVanish ()
-        }
+      mk_assume (desugar assume_expr)
     (* Dependent records / modules *)
     | EModule stmts -> EModule (List.concat_map desugar_statement stmts)
     (* Patterns *)
     | EMatch { subject ; patterns } ->
-      EMatch { subject = desugar subject ; patterns =
-                List.map (fun (pat, e) -> desugar_pattern pat e) patterns
-             }
+      let patterns =
+        List.map (fun (pat, e) -> desugar_pattern pat e) patterns
+      in
+      EMatch { subject = desugar subject ; patterns }
     (* Lists *)
     | EList [] ->
       EVariant { label = Reserved.nil ; payload = EUnit }
@@ -142,40 +138,45 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
           EListCons (e, acc)
         ) ls_e (EList [])
     | EListCons (e_hd, e_tl) ->
-      EVariant { label = Reserved.cons ; payload =
-                                           ERecord (Parsing_tools.record_of_list
-                                                      [ (Reserved.hd, desugar e_hd)
-                                                      ; (Reserved.tl, EAppl { func = Desugared_functions.filter_list ; arg = desugar e_tl })
-                                                      ]
-                                                   )
-               }
+      let bindings =
+        [ (Reserved.hd, desugar e_hd)
+        ; (Reserved.tl, EAppl { func = Desugared_functions.filter_list ; arg = desugar e_tl })
+        ]
+      in
+      let payload = ERecord (Parsing_tools.record_of_list bindings) in
+      EVariant { label = Reserved.cons ; payload }
     | ETypeList ->
       let tau = Names.fresh_id ~suffix:"tau_list" () in
       let t = Names.fresh_id ~suffix:"list_t" () in
       abstract_over_ids [tau] @@
-      ETypeMu { var = t ; params = [] ; body =
-                                          ETypeVariant
-                                            [ (Reserved.nil_type, ETypeUnit)
-                                            ; (Reserved.cons_type,
-                                               ETypeRecord (Parsing_tools.record_of_list
-                                                              [ (Reserved.hd, EVar tau)
-                                                              ; (Reserved.tl, EVar t)
-                                                              ]
-                                                           )
-                                              )
-                                            ]
-              }
+      let list_constructors =
+        [ (Reserved.nil_type, ETypeUnit)
+        ; (Reserved.cons_type,
+           ETypeRecord
+             (Parsing_tools.record_of_list
+                [ (Reserved.hd, EVar tau)
+                ; (Reserved.tl, EVar t)
+                ]
+             )
+          )
+        ]
+      in
+      ETypeMu { var = t ; params = [] ; body = ETypeVariant list_constructors }
     (* Intersection type *)
     | ETypeIntersect ls_e ->
       desugar @@
       let x = Names.fresh_id ~suffix:"x_match_type" () in
+      let catch_label label =
+        let variant_label = VariantTypeLabel.to_variant_label label
+        and payload_id = Reserved.catchall in
+        PVariant { variant_label ; payload_id }
+      in
+      let patterns =
+        List.map (fun (label, _, tau') -> catch_label label, tau') ls_e
+      in
       ETypeFun
         { domain = ETypeVariant (List.map (fun (label, tau, _) -> label, tau) ls_e)
-        ; codomain = EMatch { subject = EVar x ; patterns =
-            List.map (fun (label, _, tau') ->
-              PVariant { variant_label = VariantTypeLabel.to_variant_label label ; payload_id = Reserved.catchall }
-            , tau') ls_e
-          }
+        ; codomain = EMatch { subject = EVar x ; patterns }
         ; dep = `Binding x
         }
     (* Abstract type *)
@@ -184,7 +185,9 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
     | EMultiArgFunction { params ; body } ->
       abstract_over_ids params (desugar body)
     | ELetFun { func ; body } -> begin
-        let { func_id ; defn ; params ; tau_opt } : desugared Function_components.t = funsig_to_components func in
+        let { Function_components.func_id ; defn ; params ; tau_opt } =
+          funsig_to_components func
+        in
         build @@
         let* () =
           assign ~ty:(Binding.Ty.typed_of_tau_opt tau_opt) func_id (
@@ -236,15 +239,13 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
     | [ (FTyped _) as f ] when Splay.is_yes do_type_splay ->
       let comps = funsig_to_components f in
       let tau = Option.get comps.tau_opt in
-      let stmt =
-        Expr.STyped { typed_var = { var = comps.func_id ; tau } ; typed_binding_opts =
-          TBDesugared { do_wrap = true ; do_check = true }
-        ; defn =
-          apply
-            (abstract_over_ids (comps.func_id :: comps.params) comps.defn)
-            (EGen tau)
-        }
-      in
+      let typed_binding_opts = TBDesugared { do_wrap = true ; do_check = true }
+      and defn =
+        apply
+          (abstract_over_ids (comps.func_id :: comps.params) comps.defn)
+          (EGen tau)
+      and typed_var = { var = comps.func_id ; tau } in
+      let stmt = Expr.STyped { typed_var ; typed_binding_opts ; defn } in
       [ stmt ]
     | _ ->
       let func_comps = List.map funsig_to_components fsigs in
@@ -258,7 +259,10 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
             | _ ->
               (* default behavior uses the actual function body *)
               build @@
-              let* () = assign ~ty:(Binding.Ty.typed_of_tau_opt ~do_check:false comps.tau_opt) comps.func_id (
+              let ty =
+                Binding.Ty.typed_of_tau_opt ~do_check:false comps.tau_opt
+              in
+              let* () = assign ~ty comps.func_id (
                   abstract_over_ids comps.params comps.defn
                 )
               in
@@ -272,8 +276,7 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
           @@ proj (EVar r) (RecordLabel.RecordLabel comps.func_id)
         ) func_comps
       @ List.map (fun comps ->
-          if Option.is_some comps.Function_components.tau_opt && Splay.is_yes do_type_splay
-          then
+          if Option.is_some comps.Function_components.tau_opt && Splay.is_yes do_type_splay then
             make_stmt ~do_wrap:true ~do_check:true ~tau_opt:comps.tau_opt comps.func_id (
               abstract_over_ids comps.params comps.defn (* actual definition of function *)
             )
@@ -288,19 +291,22 @@ let desugar_pgm (names : (module Fresh_names.S)) (pgm : Bluejay.pgm) ~(do_type_s
       [ Expr.SUntyped { var ; defn = desugar defn } ]
     | STyped { typed_var = { var ; tau } ; defn ; typed_binding_opts = TBBluejay } ->
       [ Expr.STyped {
-        typed_var = { var ; tau = desugar tau };
-        defn = desugar defn;
-        typed_binding_opts = TBDesugared { do_wrap = true; do_check = true }
-      }
+            typed_var = { var ; tau = desugar tau };
+            defn = desugar defn;
+            typed_binding_opts = TBDesugared { do_wrap = true; do_check = true }
+          }
       ]
     | SFun fsig ->
-      let { func_id ; defn ; params ; tau_opt } : desugared Function_components.t = funsig_to_components fsig in
+      let { Function_components.func_id ; defn ; params ; tau_opt } =
+        funsig_to_components fsig
+      in
       let defn = abstract_over_ids params defn in
       [ make_stmt ~do_wrap:true ~do_check:true ~tau_opt func_id defn ]
     | SFunRec fsigs ->
       desugar_rec_funs_to_stmt_list fsigs
 
-  and make_stmt ~(do_wrap : bool) ~(do_check : bool) ~(tau_opt : Desugared.t option) (var : Ident.t) (defn : Desugared.t) : Desugared.statement =
+  and make_stmt ~(do_wrap : bool) ~(do_check : bool) ~(tau_opt : Desugared.t option)
+      (var : Ident.t) (defn : Desugared.t) : Desugared.statement =
     match tau_opt with
     | None ->
       SUntyped { var ; defn }

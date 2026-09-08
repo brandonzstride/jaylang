@@ -370,7 +370,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                     let@ e = "e_alpha_check" in
                     let v = Names.fresh_id ~suffix:"v" () in
                     let pat_body =
-                      Embedded_functions.mk_assert
+                      mk_assert
                         (EBinop { left = EVar i ; binop = BEqual ; right = proj (EVar v) Reserved.i })
                         "Non-equal untouchable values"
                     in
@@ -396,7 +396,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
               build @@
               let* candidate = capture @@ gen tau in
               let verify_refinement =
-                Embedded_functions.mk_assume (apply (embed e_p) (EVar candidate))
+                mk_assume (apply (embed e_p) (EVar candidate))
               in
               let* () = ignore @@ EDefer verify_refinement in
               return (EVar candidate)
@@ -410,7 +410,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                 (let Ident s = e in s) (Expr.to_string e_p)
             in
             let check_refinement =
-              Embedded_functions.mk_assert (apply (embed e_p) (EVar e)) msg
+              mk_assert (apply (embed e_p) (EVar e)) msg
             in
             return @@ EDefer check_refinement
           )

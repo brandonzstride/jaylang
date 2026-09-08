@@ -39,6 +39,14 @@ end) : sig
   (** [build x] uses the tape in [x] to build an expression. *)
 end
 
+val mk_assume : ([< `Desugared | `Embedded ] Lang.Ast.Expr.t as 'a) -> 'a
+(* val mk_assume : Lang.Ast.Embedded.t -> Lang.Ast.Embedded.t *)
+(** [mk_assume cond] assumes [cond]. *)
+
+val mk_assert : ([< `Desugared | `Embedded ] Lang.Ast.Expr.t as 'a) -> string -> 'a
+(** [mk_assert cond msg] asserts [cond] and fails with message [msg] if [cond]
+    does not hold. *)
+
 module Desugared_functions : sig
   (*
     let filter_list x =
@@ -97,11 +105,4 @@ module Embedded_functions : sig
   val y_freeze_thaw : Lang.Ast.Embedded.t
 
   val y_1 : Lang.Ast.Embedded.t
-
-  val mk_assume : Lang.Ast.Embedded.t -> Lang.Ast.Embedded.t
-  (** [mk_assume cond] assumes [cond]. *)
-
-  val mk_assert : Lang.Ast.Embedded.t -> string -> Lang.Ast.Embedded.t
-  (** [mk_assert cond msg] asserts [cond] and fails with message [msg] if [cond]
-      does not hold. *)
 end

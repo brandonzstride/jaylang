@@ -55,6 +55,12 @@ end
 
 open Ast_tools
 
+let mk_assume cond =
+  Expr.EIf { cond ; true_body = EUnit ; false_body = EVanish () }
+
+let mk_assert cond msg =
+  Expr.EIf { cond ; true_body = EUnit ; false_body = EAbort msg }
+
 module Desugared_functions = struct
   (*
     let filter_list x =
@@ -203,10 +209,4 @@ module Embedded_functions = struct
     in
     abstract_over_ids [ f ] @@
       apply body body
-
-  let mk_assume cond =
-    Expr.EIf { cond ; true_body = EUnit ; false_body = EVanish () }
-
-  let mk_assert cond msg =
-   Expr.EIf { cond ; true_body = EUnit ; false_body = EAbort msg }
 end
