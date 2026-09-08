@@ -42,7 +42,7 @@ end
 module Desugared_functions : sig
   (*
     let filter_list x =
-      match x with 
+      match x with
       | `Nil _ -> x
       | `Cons _ -> x
       end
@@ -81,12 +81,12 @@ end
 
 module Embedded_functions : sig
   (*
-    Y-combinator for Mu types: 
+    Y-combinator for Mu types:
 
       fun f ->
         (fun x -> freeze (thaw (f (x x))))
         (fun x -> freeze (thaw (f (x x))))
-    
+
     Notes:
     * f is a function, so it has be captured with a closure, so there is nothing
       wrong about using any names here. However, I use tildes to be safe and make
@@ -97,4 +97,11 @@ module Embedded_functions : sig
   val y_freeze_thaw : Lang.Ast.Embedded.t
 
   val y_1 : Lang.Ast.Embedded.t
+
+  val mk_assume : Lang.Ast.Embedded.t -> Lang.Ast.Embedded.t
+  (** [mk_assume cond] assumes [cond]. *)
+
+  val mk_assert : Lang.Ast.Embedded.t -> string -> Lang.Ast.Embedded.t
+  (** [mk_assert cond msg] asserts [cond] and fails with message [msg] if [cond]
+      does not hold. *)
 end

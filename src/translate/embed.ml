@@ -152,12 +152,13 @@ let uses_id (expr : Desugared.t) (id : Ident.t) : bool =
         ) Fun.id false stmt_ls
     | ETypeModule m ->
       Etc.list_fold_until (fun acc (label, e) ->
-        let RecordLabel.RecordLabel label_id = label in
-        let res = acc || loop e in
-        if Ident.equal label_id id
-        then `Stop res (* stop because id is bound to this label in later labels *)
-        else `Continue res (* continue to check remaining labels after this *)
-      ) Fun.id false m
+          let RecordLabel.RecordLabel label_id = label in
+          let res = acc || loop e in
+          if Ident.equal label_id id then
+            `Stop res (* stop because id is bound to this label in later labels *)
+          else
+            `Continue res (* continue to check remaining labels after this *)
+        ) Fun.id false m
     | ETypeVariant ls -> List.exists (fun (_, e) -> loop e) ls
     | EMatch { subject ; patterns } -> loop subject || List.exists (fun (_, e) -> loop e) patterns
     | EIf { cond ; true_body ; false_body } -> loop cond || loop true_body || loop false_body
@@ -173,9 +174,10 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
   (* alias because sometimes we shadow do_wrap, and we need this to embed let-expressions *)
   let pgm_wrap_flag = do_wrap in
 
-  let fresh_abstraction (type a) (suffix : string) (e : Ident.t -> a Expr.t) : a Expr.t =
-    let id = Names.fresh_id ~suffix () in
-    EFunction { param = id ; body = e id }
+  (* introduce a fresh variable, named with the provided suffix *)
+  let ( let@ ) suffix e =
+    let param = Names.fresh_id ~suffix () in
+    EFunction { param ; body = e param }
   in
 
   let cur_mu_vars : Ident.t Stack.t = Stack.create () in
@@ -210,20 +212,22 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
     | EModule stmt_ls ->
       EModule (List.map embed_statement stmt_ls)
     | EMatch { subject ; patterns } ->
-      EMatch { subject = embed subject ; patterns =
-                                           List.map (fun (pat, e) -> (embed_pattern pat, embed e)) patterns
-             }
+      let patterns =
+        List.map (fun (pat, e) -> (embed_pattern pat, embed e)) patterns
+      in
+      EMatch { subject = embed subject ; patterns }
     | EDefer e -> EDefer (embed e)
     | EGen e -> gen e
     (* Let *)
     | ELetTyped { typed_var ; defn ; body ; typed_binding_opts } ->
-      stmt_to_expr (embed_statement (STyped { typed_var ; defn ; typed_binding_opts })) (embed body)
+      let stmt = STyped { typed_var ; defn ; typed_binding_opts } in
+      stmt_to_expr (embed_statement stmt) (embed body)
     (* types *)
     | ETypeUnit ->
       make_embedded_type
         { gen = lazy EUnit
         ; check = lazy (
-            fresh_abstraction "e_unit_check" @@ fun e ->
+            let@ e = "e_unit_check" in
             EMatch { subject = EVar e ; patterns = [ PUnit, EUnit ] }
           )
         ; wrap = lazy eid
@@ -232,7 +236,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy EPick_i
         ; check = lazy (
-            fresh_abstraction "e_int_check" @@ fun e ->
+            let@ e = "e_int_check" in
             EMatch { subject = EVar e ; patterns = [ PInt, EUnit ]}
           )
         ; wrap = lazy eid
@@ -241,7 +245,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy EPick_b
         ; check = lazy (
-            fresh_abstraction "e_bool_check" @@ fun e ->
+            let@ e = "e_bool_check" in
             EMatch { subject = EVar e ; patterns = [ PBool, EUnit ]}
           )
         ; wrap = lazy eid
@@ -251,7 +255,8 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
         { gen = lazy (
               build @@
               let* nonce = capture ~suffix:"nonce" EPick_i in
-              return @@ fresh_abstraction "arg_arrow_gen" @@ fun arg ->
+              return @@
+              let@ arg = "arg_arrow_gen" in
               build @@
               let* () = ignore (EVar nonce) in
               let* () = ignore (EDefer (check tau1 (EVar arg))) in
@@ -263,7 +268,7 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
               return @@ gen tau2
             )
         ; check = lazy (
-            fresh_abstraction "e_arrow_check" @@ fun e ->
+            let@ e = "e_arrow_check" in
             match dep with
             | `Binding x ->
               build @@
@@ -275,11 +280,10 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
               check tau2 appl
           )
         ; wrap = lazy (
-            fresh_abstraction "e_arrow_wrap" @@ fun e ->
-            fresh_abstraction "x_arrow_wrap" @@ fun arg ->
+            let@ e = "e_arrow_wrap" in
+            let@ arg = "x_arrow_wrap" in
             build @@
-            let* () = ignore (EDefer (check tau1 (EVar arg)))
-            in
+            let* () = ignore (EDefer (check tau1 (EVar arg))) in
             match dep with
             | `Binding x ->
               let* () = assign x @@ (*wrap tau1*) (EVar arg) in
@@ -294,56 +298,60 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       make_embedded_type
         { gen = lazy (ERecord (RecordLabel.Map.map gen m))
         ; check = lazy (
-            fresh_abstraction "e_rec_check" @@ fun e ->
-            EMatch { subject = EVar e
-                   ; patterns =
-                       let body =
-                         build @@
-                         let* () =
-                           iter (RecordLabel.Map.to_list m) ~f:(fun (label, tau) ->
-                               ignore (check tau (proj (EVar e) label))
-                             )
-                         in
-                         return EUnit
-                       in
-                       [ PRecord, body ]
-                   }
+            let@ e = "e_rec_check" in
+            let pat_body =
+              build @@
+              let* () =
+                iter (RecordLabel.Map.to_list m) ~f:(fun (label, tau) ->
+                    ignore (check tau (proj (EVar e) label))
+                  )
+              in
+              return EUnit
+            in
+            EMatch { subject = EVar e ; patterns = [ PRecord, pat_body ] }
           )
         ; wrap = lazy (
-            fresh_abstraction "e_rec_wrap"  @@ fun e ->
-            ERecord (
+            let@ e = "e_rec_wrap" in
+            let body =
               RecordLabel.Map.mapi (fun label tau ->
-                wrap tau (proj (EVar e) label)
-              ) m
-            )
+                  wrap tau (proj (EVar e) label)
+                ) m
+            in
+            ERecord body
           )
         }
     | ETypeModule ls ->
       make_embedded_type
-        { gen = lazy (EModule (
-              List.map (fun (RecordLabel.RecordLabel var, tau) -> SUntyped { var ; defn = gen tau }
-              ) ls)
+        { gen = lazy (
+              let body =
+                List.map (fun (RecordLabel.RecordLabel var, tau) ->
+                    SUntyped { var ; defn = gen tau }
+                  ) ls
+              in
+              EModule body
             )
         ; check = lazy (
-            fresh_abstraction "e_module_check" @@ fun e ->
-            EMatch { subject = EVar e
-                   ; patterns =
-                       [ PModule
-                       , build @@
-                         let* () =
-                           iter ls ~f:(fun (RecordLabel label_id as l, tau) ->
-                               let* () = ignore @@ check tau (proj (EVar e) l) in
-                               assign label_id @@ proj (EVar e) l
-                             )
-                         in
-                         return EUnit ]
-                   }
+            let@ e = "e_module_check" in
+            let pat_body =
+              build @@
+              let* () =
+                iter ls ~f:(fun (RecordLabel label_id as l, tau) ->
+                    let* () = ignore @@ check tau (proj (EVar e) l) in
+                    assign label_id @@ proj (EVar e) l
+                  )
+              in
+              return EUnit
+            in
+            EMatch { subject = EVar e ; patterns = [ PModule, pat_body ] }
           )
         ; wrap = lazy (
-            fresh_abstraction "e_dep_rec_wrap" @@ fun e ->
-            EModule (
-              List.map (fun ((RecordLabel.RecordLabel var) as l, tau) -> SUntyped { var ; defn = wrap tau (proj (EVar e) l) }) ls
-            )
+            let@ e = "e_dep_rec_wrap" in
+            let body =
+              List.map (fun ((RecordLabel.RecordLabel var) as l, tau) ->
+                  SUntyped { var ; defn = wrap tau (proj (EVar e) l) }
+                ) ls
+            in
+            EModule body
           )
         }
     | EType ->
@@ -353,29 +361,26 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
               let* i = capture EPick_i in
               return @@
               E.make ~ask_for:`All
-                { gen = lazy (EUntouchable (
-                      ERecord (RecordLabel.Map.of_list
-                                 [ (Reserved.i, EVar i) ; (Reserved.nonce, EPick_i) ]
-                              )
-                    ))
+                { gen = lazy (
+                      let bindings = [ (Reserved.i, EVar i) ; (Reserved.nonce, EPick_i) ] in
+                      let r = ERecord (RecordLabel.Map.of_list bindings) in
+                      EUntouchable r
+                    )
                 ; check = lazy (
-                    fresh_abstraction "e_alpha_check" @@ fun e ->
-                    EMatch { subject = EVar e ; patterns =
-                                                  let v = Names.fresh_id ~suffix:"v" () in
-                                                  [ (PUntouchable v
-                                                    , EIf
-                                                        { cond = EBinop { left = EVar i ; binop = BEqual ; right = proj (EVar v) Reserved.i }
-                                                        ; true_body = EUnit
-                                                        ; false_body = EAbort "Non-equal untouchable values"
-                                                        })
-                                                  ]
-                           }
+                    let@ e = "e_alpha_check" in
+                    let v = Names.fresh_id ~suffix:"v" () in
+                    let pat_body =
+                      Embedded_functions.mk_assert
+                        (EBinop { left = EVar i ; binop = BEqual ; right = proj (EVar v) Reserved.i })
+                        "Non-equal untouchable values"
+                    in
+                    EMatch { subject = EVar e ; patterns = [ PUntouchable v, pat_body ] }
                   )
                 ; wrap = lazy eid
                 }
             )
         ; check = lazy (
-            fresh_abstraction "e_type_check" @@ fun e ->
+            let@ e = "e_type_check" in
             build @@
             let e = EVar e in
             let* () = ignore @@ proj e Reserved.gen in
@@ -390,57 +395,56 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
         { gen = lazy (
               build @@
               let* candidate = capture @@ gen tau in
-              let* () = ignore @@ EDefer (EIf
-                                                { cond = apply (embed e_p) (EVar candidate)
-                                                ; true_body = EUnit
-                                                ; false_body = EVanish ()
-                                                })
+              let verify_refinement =
+                Embedded_functions.mk_assume (apply (embed e_p) (EVar candidate))
               in
+              let* () = ignore @@ EDefer verify_refinement in
               return (EVar candidate)
             )
         ; check = lazy (
-            fresh_abstraction "e_ref_check" @@ fun e ->
+            let@ e = "e_ref_check" in
             build @@
             let* () = ignore @@ check tau (EVar e) in
-            return @@ EDefer (
-              EIf
-                { cond = apply (embed e_p) (EVar e)
-                ; true_body = EUnit
-                ; false_body = EAbort (Format.sprintf "Failed predicate on variable %s: %s" (let Ident s = e in s) (Expr.to_string e_p))
-                }
-            )
+            let msg =
+              Format.sprintf "Failed predicate on variable %s: %s"
+                (let Ident s = e in s) (Expr.to_string e_p)
+            in
+            let check_refinement =
+              Embedded_functions.mk_assert (apply (embed e_p) (EVar e)) msg
+            in
+            return @@ EDefer check_refinement
           )
         ; wrap = lazy (
-            fresh_abstraction "e_ref_wrap" @@ fun e ->
+            let@ e = "e_ref_wrap" in
             wrap tau (EVar e)
           )
         }
     | ETypeVariant e_variant_type ->
       let e_variant_ls =
         List.map (fun (type_label, tau) ->
-          VariantTypeLabel.to_variant_label type_label, tau
-        ) e_variant_type
+            VariantTypeLabel.to_variant_label type_label, tau
+          ) e_variant_type
       in
       make_embedded_type
         { gen = lazy (
               let of_case_list do_defer = function
                 | [] -> failwith "invalid empty variant"
                 | [ (label, tau) ] -> EVariant { label ; payload =
-                    if do_defer then EDefer (gen tau) else gen tau
-                  } (* no case needed on one variant *)
+                                                           if do_defer then EDefer (gen tau) else gen tau
+                                               } (* no case needed on one variant *)
                 | (last_label, last_tau) :: tl ->
                   ECase
                     { subject = EPick_i
                     ; cases =
                         List.mapi (fun i (label, tau) ->
                             i + 1, EVariant { label ; payload =
-                              if do_defer then EDefer (gen tau) else gen tau
-                            }
-                        ) tl
+                                                        if do_defer then EDefer (gen tau) else gen tau
+                                            }
+                          ) tl
                     ; default =
                         EVariant { label = last_label ; payload =
-                          if do_defer then EDefer (gen last_tau) else gen last_tau
-                        }
+                                                          if do_defer then EDefer (gen last_tau) else gen last_tau
+                                 }
                     }
               in
               let unlikely, likely =
@@ -460,24 +464,26 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
 
             )
         ; check = lazy (
-            fresh_abstraction "e_var_check" @@ fun e ->
-            EMatch { subject = EVar e ; patterns =
-                                          let v = Names.fresh_id () in
-                                          List.map (fun (variant_label, tau) ->
-                                              PVariant { variant_label ; payload_id = v }
-                                            , check tau (EVar v)
-                                            ) e_variant_ls
-                   }
+            let@ e = "e_var_check" in
+            let patterns =
+              let v = Names.fresh_id () in
+              List.map (fun (variant_label, tau) ->
+                  PVariant { variant_label ; payload_id = v }
+                , check tau (EVar v)
+                ) e_variant_ls
+            in
+            EMatch { subject = EVar e ; patterns }
           )
         ; wrap = lazy (
-            fresh_abstraction "e_var_wrap" @@ fun e ->
-            EMatch { subject = EVar e ; patterns =
-                                          let v = Names.fresh_id () in
-                                          List.map (fun (variant_label, tau) ->
-                                              PVariant { variant_label ; payload_id = v }
-                                            , EVariant { label = variant_label ; payload = EDefer (wrap tau (EVar v)) }
-                                            ) e_variant_ls
-                   }
+            let@ e = "e_var_wrap" in
+            let patterns =
+              let v = Names.fresh_id () in
+              List.map (fun (variant_label, tau) ->
+                  PVariant { variant_label ; payload_id = v }
+                , EVariant { label = variant_label ; payload = EDefer (wrap tau (EVar v)) }
+                ) e_variant_ls
+            in
+            EMatch { subject = EVar e ; patterns }
           )
         }
     | ETypeMu { var = beta ; params ; body = tau } ->
@@ -486,17 +492,17 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
         match do_type_splay with
         | No -> (* standard translation, allowing arbitrary depth in recursive types *)
           thaw (apply Embedded_functions.y_freeze_thaw @@
-                 fresh_abstraction "self_mu" @@ fun self ->
-                 freeze (
-                     abstract_over_ids params @@
-                     let with_beta body = ELet { var = beta ; defn = thaw (EVar self) ; body } in
-                     make_embedded_type
-                       { gen = lazy (with_beta (gen tau))
-                       ; check = lazy (fresh_abstraction "e_mu_check" @@ fun e -> with_beta (check tau (EVar e)))
-                       ; wrap = lazy (fresh_abstraction "e_mu_wrap" @@ fun e -> with_beta (wrap tau (EVar e)))
-                       }
-                   )
+                let@ self = "self_mu" in
+                freeze (
+                  abstract_over_ids params @@
+                  let with_beta body = ELet { var = beta ; defn = thaw (EVar self) ; body } in
+                  make_embedded_type
+                    { gen = lazy (with_beta (gen tau))
+                    ; check = lazy (let@ e = "e_mu_check" in with_beta (check tau (EVar e)))
+                    ; wrap = lazy (let@ e = "e_mu_wrap" in with_beta (wrap tau (EVar e)))
+                    }
                 )
+               )
         | Yes_with_depth splay_depth -> (* limit recursive depth of generated members in this type *)
           let gend = Names.fresh_id ~suffix:"gend" () in
           let v = Names.fresh_id ~suffix:"v" () in
@@ -504,11 +510,18 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
             embed @@ ETypeVariant [ Reserved.stub_type, t ]
           in
           let body =
-            fresh_abstraction "self_mu" @@ fun self ->
-            fresh_abstraction "depth_mu" @@ fun depth ->
+            let@ self = "self_mu" in
+            let@ depth = "depth_mu" in
             abstract_over_ids params @@
-            let with_beta body = ELet { var = beta ; defn = apply (EVar self) (EBinop { left = EVar depth ; binop = BMinus ; right = EInt 1 }) ; body } in
-            let with_beta_as_stub body = ELet { var = beta ; defn = stub_type ETypeUnit ; body } in
+            let with_beta body =
+              let defn =
+                apply (EVar self) (EBinop { left = EVar depth ; binop = BMinus ; right = EInt 1 })
+              in
+              ELet { var = beta ; defn ; body }
+            in
+            let with_beta_as_stub body =
+              ELet { var = beta ; defn = stub_type ETypeUnit ; body }
+            in
             make_embedded_type
               { gen = lazy (
                     EIf
@@ -517,20 +530,24 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
                       ; false_body = with_beta (gen tau)
                       }
                   )
-              ; check = lazy (fresh_abstraction "e_mu_check" @@ fun e ->
-                              EMatch { subject = EVar e ; patterns =
-                                                            [ PVariant { variant_label = Reserved.stub ; payload_id = gend }, with_beta_as_stub (check tau (EVar gend))
-                                                            ; PUntouchable v, with_beta (check tau (EUntouchable (EVar v)))
-                                                            ; PAny, with_beta (check tau (EVar e)) ]
-                                     }
-                             )
-              ; wrap = lazy (fresh_abstraction "e_mu_wrap" @@ fun e ->
-                             EMatch { subject = EVar e ; patterns =
-                                                           [ PVariant { variant_label = Reserved.stub ; payload_id = Reserved.catchall }, EVar e
-                                                           ; PUntouchable v, with_beta (wrap tau (EUntouchable (EVar v)))
-                                                           ; PAny, with_beta (wrap tau (EVar e)) ]
-                                    }
-                            )
+              ; check = lazy (
+                  let@ e = "e_mu_check" in
+                  let patterns =
+                    [ PVariant { variant_label = Reserved.stub ; payload_id = gend }, with_beta_as_stub (check tau (EVar gend))
+                    ; PUntouchable v, with_beta (check tau (EUntouchable (EVar v)))
+                    ; PAny, with_beta (check tau (EVar e)) ]
+                  in
+                  EMatch { subject = EVar e ; patterns }
+                )
+              ; wrap = lazy (
+                  let@ e = "e_mu_wrap" in
+                  let patterns =
+                    [ PVariant { variant_label = Reserved.stub ; payload_id = Reserved.catchall }, EVar e
+                    ; PUntouchable v, with_beta (wrap tau (EUntouchable (EVar v)))
+                    ; PAny, with_beta (wrap tau (EVar e)) ]
+                  in
+                  EMatch { subject = EVar e ; patterns }
+                )
               }
           in
           appl_list Embedded_functions.y_1 [ body ; (EInt splay_depth) ]
@@ -539,15 +556,19 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       res
     | ETypeTop ->
       make_embedded_type
-        { gen = lazy (EVariant { label = Reserved.top ; payload =
-            ERecord (RecordLabel.Map.singleton Reserved.nonce EPick_i) })
-        ; check = lazy (fresh_abstraction "e_top_check" @@ fun _ -> EUnit)
+        { gen = lazy (
+              let payload =
+                ERecord (RecordLabel.Map.singleton Reserved.nonce EPick_i)
+              in
+              EVariant { label = Reserved.top ; payload }
+            )
+        ; check = lazy (let@ _ = "e_top_check" in EUnit)
         ; wrap = lazy eid
         }
     | ETypeBottom ->
       make_embedded_type
         { gen = lazy (EVanish ())
-        ; check = lazy (fresh_abstraction "e_top_check" @@ fun _ -> EAbort "Nothing is in bottom")
+        ; check = lazy (let@ _ = "e_bottom_check" in EAbort "Nothing is in bottom")
         ; wrap = lazy eid
         }
     | ETypeSingle ->
@@ -555,11 +576,12 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
       abstract_over_ids [tau] @@
       make_embedded_type
         { gen = lazy (EVar tau)
-        ; check = lazy (fresh_abstraction "t_singletype_check" @@ fun t ->
+        ; check = lazy (
+            let@ t = "t_singletype_check" in
             build @@
             let* _ = ignore @@ check (EVar tau) (gen (EVar t)) in
             return (check (EVar t) (gen (EVar tau)))
-        )
+          )
         ; wrap = lazy eid
         }
 
@@ -568,14 +590,16 @@ let embed_pgm (names : (module Fresh_names.S)) (pgm : Desugared.pgm) ~(do_wrap :
     build @@
     let* v = capture @@ embed defn in
     let* () =
-      if do_check
-      then ignore @@ check tau (EVar v)
-      else return ()
+      if do_check then
+        ignore @@ check tau (EVar v)
+      else
+        return ()
     in
     (* pgm_wrap_flag here is the external do_wrap that tells us whether we *ever* wrap *)
-    if pgm_wrap_flag && do_wrap
-    then return @@ wrap tau (EVar v)
-    else return (EVar v)
+    if pgm_wrap_flag && do_wrap then
+      return @@ wrap tau (EVar v)
+    else
+      return (EVar v)
 
   and embed_pattern (pat : Desugared.pattern) : Embedded.pattern =
     match pat with
@@ -645,6 +669,6 @@ let split_checks (stmt_ls : Desugared.statement list) : Desugared.pgm Nel.t =
   | Some pgm_ls -> pgm_ls
 
 let embed_fragmented (names : (module Fresh_names.S)) (pgm : Desugared.pgm)
-   ~(do_wrap : bool) ~(do_type_splay : Splay.t) : Embedded.pgm Nel.t =
+    ~(do_wrap : bool) ~(do_type_splay : Splay.t) : Embedded.pgm Nel.t =
   Nel.map (fun pgm -> embed_pgm names pgm ~do_wrap ~do_type_splay)
   @@ split_checks pgm
