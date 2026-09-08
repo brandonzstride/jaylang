@@ -484,7 +484,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       Format.printf "FOUND ABORT %s\n" msg; VAbort
     | Error `XVanish () -> Format.printf "VANISH\n"; VVanish
     | Error `XUnbound_variable (Lang.Ast.Ident.Ident s, ()) ->
-      Format.printf "UNBOUND VARIBLE %s\n" s; VUnboundVariable (Ident s)
+      Format.printf "UNBOUND VARIABLE %s\n" s; VUnboundVariable (Ident s)
     | Error `XReach_max_step () -> Format.printf "REACHED MAX STEP\n"; VVanish
   in
   e, log
