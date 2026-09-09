@@ -12,6 +12,7 @@
         (features (<test feature list>))
         (reasons (<test reason list>))
         (speed <Fast or Slow>)
+        (skip <true or false>)
         (typing <Well_typed or Ill_typed or Exhausted>)
         (flags "<some string containing the argv flags to ceval>")
       )
@@ -59,6 +60,7 @@ type t =
   { features : Ttag.t list  [@default []]
   ; reasons  : Ttag.t list  [@default []]
   ; speed    : Test_speed.t [@default Fast]
+  ; skip     : bool         [@default false]
   ; typing   : Typing.t     [@default Exhausted]
   ; flags    : Flags.t      [@default [||]]
   } [@@deriving sexp]

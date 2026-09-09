@@ -1,7 +1,8 @@
 open Utils
 
-let testcase_of_filename (testname : string) : unit Alcotest.test_case =
+let testcase_of_filename (testname : string) : unit Alcotest.test_case option =
   let metadata = Metadata.of_bjy_file testname in
+  if metadata.skip then None else
   let is_error_expected =
     match metadata.typing with
     | Ill_typed -> true
@@ -12,7 +13,7 @@ let testcase_of_filename (testname : string) : unit Alcotest.test_case =
     | Slow -> `Slow
     | Fast -> `Quick
   in
-  Alcotest.test_case testname speed_level
+  Some (Alcotest.test_case testname speed_level
   @@ fun () ->
     Cmdliner.Cmd.eval_value' ~argv:(Array.append [| ""; testname; "-t"; "10.0" |] metadata.flags) Concolic.Driver.Deferred.eval
     |> begin function
@@ -21,6 +22,7 @@ let testcase_of_filename (testname : string) : unit Alcotest.test_case =
     end
     |> Bool.equal is_error_expected
     |> Alcotest.check Alcotest.bool "bjy deferred concolic" true
+  )
 
 let root_dir = "test/bjy/"
 
@@ -29,7 +31,7 @@ let make_tests (dirs : string list) : unit Alcotest.test list =
     ( dirname
     , [ root_dir ^ dirname ]
       |> File_utils.get_all_bjy_files
-      |> List.map testcase_of_filename
+      |> List.filter_map testcase_of_filename
     )
   ) dirs
 
@@ -38,6 +40,9 @@ let () =
   @@ make_tests
     [ "oopsla-26-ill-typed"
     ; "oopsla-26-well-typed"
+
+    ; "auklet-ill-typed"
+    ; "auklet-well-typed"
 
     (* ; "deep-type-error" *)
 

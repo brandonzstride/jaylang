@@ -1,14 +1,15 @@
 open Concolic
 open Utils
 
-let testcase_of_filename (testname : string) : unit Alcotest.test_case =
+let testcase_of_filename (testname : string) : unit Alcotest.test_case option =
   let metadata = Metadata.of_bjy_file testname in
+  if metadata.skip then None else
   let speed_level =
     match metadata.speed with
     | Slow -> `Slow
     | Fast -> `Quick
   in
-  Alcotest.test_case testname speed_level
+  Some (Alcotest.test_case testname speed_level
   @@ fun () ->
     Cmdliner.Cmd.eval_value' ~argv:(Array.append [| ""; testname; "-t"; "10.0" |] metadata.flags) Driver.eval
     |> function
@@ -25,6 +26,7 @@ let testcase_of_filename (testname : string) : unit Alcotest.test_case =
         Alcotest.check Alcotest.bool "bjy concolic" true res
       end
       | `Exit i -> raise @@ Invalid_argument (Format.sprintf "Test couldn't evaluate and finished with exit code %d." i)
+  )
 
 let root_dir = "test/bjy/"
 
@@ -33,7 +35,7 @@ let make_tests (dirs : string list) : unit Alcotest.test list =
     ( dirname
     , [ root_dir ^ dirname ]
       |> File_utils.get_all_bjy_files
-      |> List.map testcase_of_filename
+      |> List.filter_map testcase_of_filename
     )
   ) dirs
 
@@ -45,6 +47,9 @@ let () =
 
     ; "ocaml-functors-ill-typed"
     ; "ocaml-functors-well-typed"
+
+    ; "auklet-ill-typed"
+    ; "auklet-well-typed"
 
     (* ; "deep-type-error" *)
 

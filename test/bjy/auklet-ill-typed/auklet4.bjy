@@ -1,7 +1,9 @@
 (***
   (
     (speed Slow)
-    (typing Well_typed)
+    (typing Ill_typed)
+    (flags "-p")
+    (skip true)
   )
 *)
 
@@ -349,8 +351,6 @@ let rec lex_tokens (text: string) : list token =
     match token with
     | `Success x -> x.tok :: lex_tokens x.remaining
     | `Failure y -> [`Invalid (`NoMatch { text = text })]
-    (* ERROR idea: use `text` raw instead of in a record: *)
-    (* | `Failure y -> [`Invalid (`NoMatch text)] *)
     end
   end
 
@@ -742,8 +742,6 @@ let rec code_of_instruction_list (instrs : list instruction) : string =
 let StringIntLinearDictionary = LinearDictionary (struct
     let t = string
     let equal = list_eq eq
-    (* ERROR idea: provide the type char, not equality on chars: *)
-    (* let equal = list_eq char *)
   end) int
 
 let Environment = struct
@@ -759,8 +757,6 @@ let Environment = struct
     match StringIntLinearDictionary.get x env.m with
     | `None u -> `None ()
     | `Some ofs -> `Some (`ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=ofs}))
-    (* ERROR idea: do not return an option. (All "ERROR idea"s are genuine errors made along the way) *)
-    (* | `Some ofs -> `ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=ofs}) *)
     end
 end
 
@@ -786,19 +782,15 @@ let rec compile_expression (env : Environment.t) (e : expr)
        `Some [`AsmSub { lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 1}]]
   | `ELet r ->
     let e2env = Environment.allocate_named_variable r.var env in
-    (* ERROR idea: do not match on the option: *)
-    (* let varloc = Environment.find_named_variable r.var env in *)
-    match Environment.find_named_variable r.var env with
-    | `None u -> `None ()
-    | `Some varloc ->
-      let e1instr = compile_expression env r.e1 in
-      let e2instr = compile_expression e2env r.e2 in
-      option_list_concat instruction
-        [e1instr;
-        `Some [`AsmMov { lhs=varloc; rhs=`ArgRegister (`RAX ())}];
-        e2instr
-        ]
-    end
+    (* ERROR: find_named_variable returns an option on which we should match. *)
+    let varloc = Environment.find_named_variable r.var env in
+    let e1instr = compile_expression env r.e1 in
+    let e2instr = compile_expression e2env r.e2 in
+    option_list_concat instruction
+      [e1instr;
+      `Some [`AsmMov { lhs=varloc; rhs=`ArgRegister (`RAX ())}];
+      e2instr
+      ]
   | `EPlus r ->
     let renv1 = Environment.allocate_temp_variable env in
     let renv2 = Environment.allocate_temp_variable renv1.snd in
@@ -858,162 +850,3 @@ let compile_source_to_assembly (source : string) : option string =
   | `Failure _ -> `None ()
   | `Success r -> compile_expression_to_assembly r.e
   end
-
-(* **** Lexer unit tests **************************************************** *)
-
-let test_lex_four_space =
-  lex_tokens [c_4;c_space;eof]
-
-let test_lex_four_space_lexes =
-  list_eq token_eq test_lex_four_space [`TokInt 4; `TokEof ()]
-
-let test_lex_four_plus_three =
-  lex_tokens [c_4;c_plus;c_3;eof]
-
-let test_lex_four_plus_three_lexes =
-  list_eq token_eq test_lex_four_plus_three
-    [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
-
-let test_lex_space_four_space_plus_space_three_space =
-  lex_tokens [c_space;c_4;c_space;c_plus;c_space;c_3;c_space;eof]
-
-let test_lex_space_four_space_plus_space_three_space_lexes =
-  list_eq token_eq test_lex_space_four_space_plus_space_three_space
-    [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
-
-let test_lex_four_space_newline_times_plus_newline_three =
-  lex_tokens [c_4;c_space;c_newline;c_asterisk;c_plus;c_newline;c_3;-1]
-
-let test_lex_four_space_newline_times_plus_newline_three_lexes =
-  list_eq token_eq test_lex_four_space_newline_times_plus_newline_three
-    [`TokInt 4; `TokTimes (); `TokPlus (); `TokInt 3]
-
-let test_lex_four_plus_quantity_three_times_two =
-  lex_tokens [c_4;c_plus;c_open_paren;c_3;c_asterisk;c_2;c_closed_paren;eof]
-
-let test_lex_four_plus_quantity_three_times_two_lexes =
-  list_eq token_eq test_lex_four_plus_quantity_three_times_two
-    [`TokInt 4; `TokPlus (); `TokOpenParen (); `TokInt 3; `TokMult ();
-     `TokInt 2; `TokCloseParen(); `TokEof ()]
-
-(* **** Parser unit tests *************************************************** *)
-
-let success_eq (result: parse_result) (expected: expr) : bool =
-  match result with
-  | `Success p -> expr_eq p.e expected
-  | `Failure _ -> false
-  end
-
-let test_parse_four = parse_program [`TokInt 4; `TokEof ()]
-
-let test_parse_four_parses =
-  success_eq test_parse_four (`EInt 4)
-
-let test_parse_four_plus_three =
-  parse_program [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
-
-let test_parse_four_plus_three_parses =
-  success_eq test_parse_four_plus_three (`EPlus {e1=(`EInt 4);e2=(`EInt 3)})
-
-let test_parse_four_plus_quantity_three_times_two =
-  parse_program [`TokInt 4; `TokPlus (); `TokOpenParen (); `TokInt 3;
-                 `TokMult (); `TokInt 2; `TokCloseParen(); `TokEof ()]
-
-let test_parse_four_plus_quantity_three_times_two_parses =
-  success_eq test_parse_four_plus_quantity_three_times_two
-    (`EPlus {e1=`EInt 4; e2=`ETimes {e1=`EInt 3; e2=`EInt 2}})
-
-(* **** Compiler unit tests ************************************************* *)
-
-let stackloc (n : int) : argument =
-  `ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=(0-8)*n})
-
-let success_eq (result_opt : option (list instruction))
-               (expected : list instruction)
-    : bool =
-  match result_opt with
-  | `None u -> false
-  | `Some result -> list_eq instruction_eq result expected
-  end
-
-let test_compiler_four =
-  compile_expression Environment.empty (`EInt 4)
-
-let test_compiler_four_compiles =
-  success_eq test_compiler_four
-    [`AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 4}]
-
-let test_compiler_four_plus_quantity_three_times_two =
-  compile_expression Environment.empty
-    (`EPlus {e1=`EInt 4; e2=`ETimes {e1=`EInt 3; e2=`EInt 2}})
-
-let test_compiler_four_plus_quantity_three_times_two_compiles =
-  success_eq test_compiler_four_plus_quantity_three_times_two
-    [`AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 4};
-     `AsmMov {lhs=stackloc 1; rhs=`ArgRegister (`RAX ())};
-     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 3};
-     `AsmMov {lhs=stackloc 2; rhs=`ArgRegister (`RAX ())};
-     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 2};
-     `AsmMov {lhs=stackloc 3; rhs=`ArgRegister (`RAX ())};
-     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=stackloc 2};
-     `AsmIMul {lhs=`ArgRegister (`RAX ()); rhs=stackloc 3};
-     `AsmMov {lhs=stackloc 2; rhs=`ArgRegister (`RAX ())};
-     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=stackloc 1};
-     `AsmAdd {lhs=`ArgRegister (`RAX ()); rhs=stackloc 2}
-    ]
-
-(* **** Full pass unit tests ************************************************ *)
-
-let success_eq (result_opt : option string) (expected : string) : bool =
-  match result_opt with
-  | `None u -> false
-  | `Some text -> list_eq eq text expected
-  end
-
-let test_fullpass_four_plus_three =
-  compile_source_to_assembly
-    (* "4+(3*2)" *)
-    [c_4;c_plus;c_open_paren;c_3;c_asterisk;c_2;c_closed_paren;eof]
-
-let test_fullpass_four_plus_three_correct =
-  success_eq test_fullpass_four_plus_three
-    (* """
-       mov rax, 4
-       mov [rsp-8], rax
-       mov rax, 3
-       mov [rsp-16], rax
-       mov rax, 2
-       mov [rsp-24], rax
-       mov rax, [rsp-16]
-       imul rax, [rsp-24]
-       mov [rsp-16], rax
-       mov rax, [rsp-8]
-       add rax, [rsp-16]
-       """
-    *)
-    [c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_4;c_newline;
-     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_8;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
-     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_3;c_newline;
-     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
-     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_2;c_newline;
-     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_2;c_4;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
-     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_newline;
-     c_i;c_m;c_u;c_l;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_2;c_4;c_closed_bracket;c_newline;
-     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
-     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_8;c_closed_bracket;c_newline;
-     c_a;c_d;c_d;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_newline
-    ]
-
-(* **** Aggregate unit tests ************************************************ *)
-
-let z_ALL_TESTS =
-     test_lex_four_space_lexes
-  && test_lex_four_plus_three_lexes
-  && test_lex_space_four_space_plus_space_three_space_lexes
-  && test_lex_four_plus_quantity_three_times_two_lexes
-  && test_parse_four_parses
-  && test_parse_four_plus_three_parses
-  && test_parse_four_plus_quantity_three_times_two_parses
-  && test_compiler_four_compiles
-  && test_compiler_four_plus_quantity_three_times_two_compiles
-  && test_fullpass_four_plus_three_correct
