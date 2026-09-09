@@ -2,8 +2,64 @@
   include exhaust;
 *)
 
-let string = list int
+(* **** Useful constants **************************************************** *)
+
+let char = int
+let string = list char
+
 let eof = -1
+
+let c_newline = 10
+let c_space = 32
+let c_asterisk = 42
+let c_plus = 43
+let c_comma = 44
+let c_minus = 45
+let c_open_paren = 40
+let c_closed_paren = 41
+let c_equal = 61
+let c_open_bracket = 91
+let c_closed_bracket = 93
+let c_0 : char = 48
+let c_1 : char = 49
+let c_2 : char = 50
+let c_3 : char = 51
+let c_4 : char = 52
+let c_5 : char = 53
+let c_6 : char = 54
+let c_7 : char = 55
+let c_8 : char = 56
+let c_9 : char = 57
+let c_a : char = 97
+let c_b : char = 98
+let c_c : char = 99
+let c_d : char = 100
+let c_e : char = 101
+let c_f : char = 102
+let c_g : char = 103
+let c_h : char = 104
+let c_i : char = 105
+let c_j : char = 106
+let c_k : char = 107
+let c_l : char = 108
+let c_m : char = 109
+let c_n : char = 110
+let c_o : char = 111
+let c_p : char = 112
+let c_q : char = 113
+let c_r : char = 114
+let c_s : char = 115
+let c_t : char = 116
+let c_u : char = 117
+let c_v : char = 118
+let c_w : char = 119
+let c_x : char = 120
+let c_y : char = 121
+let c_z : char = 122
+
+(* **** Stdlib-style definitions ******************************************** *)
+
+let eq x y = x == y
 
 let rec list_eq cmp xs ys =
   match xs with
@@ -20,25 +76,54 @@ let rec list_eq cmp xs ys =
     end
   end
 
-let Tree = mu Tree.
-  | `EInt of int
-  | `EVar of string
-  | `EOpPlus of Tree * Tree
-  | `EOpMinus of Tree * Tree
-  | `EOpTimes of Tree * Tree
-  | `EAfter of Tree
-  | `EBefore of Tree
-  | `ELet of {var: string; e1:Tree; e2:Tree}
-  | `Invalid of int
+let rec list_contains cmp item xs =
+  match xs with
+  | [] -> false
+  | hd :: tl ->
+    if cmp hd item then true else list_contains cmp item tl
+  end
 
-let InvalidToken =
+let list_rev (type a) (l : list a) : list a =
+  let rec aux (acc : list a) (ls : list a) : list a =
+    match ls with
+    | [] -> acc
+    | hd :: tl -> aux (hd :: acc) tl
+    end
+  in
+  aux [] l
+
+let rec list_concat (type a) (l : list (list a)) : list a =
+  match l with
+  | [] -> []
+  | hd::tl ->
+    match hd with
+    | [] -> list_concat a tl
+    | ihd::itl -> ihd :: list_concat a (itl::tl)
+    end
+  end
+
+let int_of_string (text : string) : int =
+  let rec loop (text : string) (tally : int) : int =
+    match text with
+    | [] -> tally
+    | c :: rest -> loop rest (tally * 10 + c - 48)
+    end
+  in
+  loop text 0
+
+let nonempty_list lst =
+  match lst with | [] -> false | _ :: _ -> true end
+
+(* **** Lexer datatypes and utilities *************************************** *)
+
+let invalid_token =
   | `UnsignaledEof of unit
   | `NoMatch of { text: string }
 
-let Token =
+let token =
   | `TokMult of unit
   | `TokPlus of unit
-  | `TokInt of string
+  | `TokInt of int
   | `TokVar of string
   | `TokMinus of unit
   | `TokOpenParen of unit
@@ -49,21 +134,26 @@ let Token =
   | `TokAfter of unit
   | `TokBefore of unit
   | `TokEof of unit
-  | `Invalid of InvalidToken
+  | `Invalid of invalid_token
 
-let TokenizeError =
+let tokenize_error =
   | `TESpecific of { site: int; wanted: string; had: string }
   | `TENoCharsFound of { site: int }
 
-let TokenizeResult = `Success of {remaining:string; tok:Token}
-                   | `Failure of TokenizeError
+let tokenize_result = `Success of {remaining:string; tok:token}
+                    | `Failure of tokenize_error
 
-let tok_eq a b =
+let compose_success f g chars =
+  match f chars with
+  | `Success x -> `Success x
+  | `Failure _ -> g chars
+  end
+
+let token_eq a b =
   match a with
   | `TokMult u1 -> match b with | `TokMult u2 -> true | _ -> false end
   | `TokPlus u1 -> match b with | `TokPlus u2 -> true | _ -> false end
-  | `TokInt s1 -> match b with | `TokInt s2 -> list_eq (fun x y -> x == y) s1 s2
-                               | _ -> false end
+  | `TokInt n1 -> match b with | `TokInt n2 -> n1 == n2 | _ -> false end
   | `TokVar s1 -> match b with | `TokVar s2 -> list_eq (fun x y -> x == y) s1 s2
                                | _ -> false end
   | `TokMinus u1 -> match b with | `TokMinus u2 -> true | _ -> false end
@@ -78,67 +168,39 @@ let tok_eq a b =
   | `Invalid n1 -> match b with | `Invalid n2 -> n1 == n2 | _ -> false end
   end
 
-let compose_success f g chars =
-  match f chars with
-  | `Success x -> `Success x
-  | `Failure _ -> g chars
-  end
-
-let nonempty_list lst =
-  match lst with
-  | [] -> false
-  | _ :: _ -> true
-  end
+(* **** Lexer combinators *************************************************** *)
 
 let tokenize_exact
-    (expected : string) (tok : Token) (actual : string)
-    : TokenizeResult =
-    let rec loop (expected : string) (actual : string) : TokenizeResult =
+    (expected : string) (tok : token) (actual : string)
+    : tokenize_result =
+    let rec loop (expected : string) (actual : string) : tokenize_result =
       match expected with
       | [] -> `Success { remaining = actual; tok = tok }
       | expected_char :: expected_rest ->
         match actual with
-        | [] -> `Failure (`TESpecific { site = 1; wanted = expected; had = actual })
+        | [] -> `Failure (`TESpecific
+                    { site = 1; wanted = expected; had = actual })
         | actual_char :: actual_rest ->
           if expected_char == actual_char then
             loop expected_rest actual_rest
           else
-            `Failure (`TESpecific { site = 2; wanted = expected; had = actual })
+            `Failure (`TESpecific
+                { site = 2; wanted = expected; had = actual })
         end
       end
     in
     loop expected actual
 
-let tokenize_mult = tokenize_exact [ 42 ] (`TokMult ())
-let tokenize_plus = tokenize_exact [ 43 ] (`TokPlus ())
-let tokenize_minus = tokenize_exact [ 45 ] (`TokMinus ())
-let tokenize_openparen = tokenize_exact [ 40 ] (`TokOpenParen ())
-let tokenize_closeparen = tokenize_exact [ 41 ] (`TokCloseParen ())
-let tokenize_equal = tokenize_exact [ 61 ] (`TokEqual ())
-let tokenize_in = tokenize_exact [ 105 ; 110 ] (`TokIn ())
-let tokenize_let = tokenize_exact [ 108 ; 101 ; 116 ] (`TokLet ())
-let tokenize_after = tokenize_exact [ 97 ; 102 ; 116 ; 101 ; 114 ] (`TokAfter ())
-let tokenize_before = tokenize_exact [ 98 ; 101 ; 102 ; 111 ; 114 ; 101 ] (`TokBefore ())
-
-let rev (type a) (l : list a) : list a =
-  let rec aux (acc : list a) (ls : list a) : list a =
-    match ls with
-    | [] -> acc
-    | hd :: tl -> aux (hd :: acc) tl
-    end
-  in
-  aux [] l
-
 let tokenize_while
     (predicate : int -> int -> bool)
-    (ret : string -> | `Success of Token | `Failure of TokenizeError)
+    (ret : string -> | `Success of token | `Failure of tokenize_error)
     (text : string)
-    : TokenizeResult =
-  let rec loop (index : int) (acc : string) (text : string) : TokenizeResult =
+    : tokenize_result =
+  let rec loop (index : int) (acc : string) (text : string) : tokenize_result =
     match text with
     | [] ->
       (* Nothing left to parse.  Attempt to use the accumulated string. *)
-      match ret (rev int acc) with
+      match ret (list_rev char acc) with
       | `Success token -> `Success { remaining = text; tok = token }
       | `Failure x -> `Failure x
       end
@@ -149,7 +211,7 @@ let tokenize_while
       else
         (* We have a character that doesn't match the predicate.  Use what
            we have. *)
-        match ret (rev int acc) with
+        match ret (list_rev char acc) with
         | `Success token -> `Success { remaining = text; tok = token }
         | `Failure x -> `Failure x
         end
@@ -157,11 +219,24 @@ let tokenize_while
   in
   loop 0 [] text
 
+(* **** Lexers ************************************************************** *)
+
+let tokenize_mult = tokenize_exact [ c_asterisk ] (`TokMult ())
+let tokenize_plus = tokenize_exact [ c_plus ] (`TokPlus ())
+let tokenize_minus = tokenize_exact [ c_minus ] (`TokMinus ())
+let tokenize_openparen = tokenize_exact [ c_open_paren ] (`TokOpenParen ())
+let tokenize_closeparen = tokenize_exact [ c_closed_paren ] (`TokCloseParen ())
+let tokenize_equal = tokenize_exact [ c_equal ] (`TokEqual ())
+let tokenize_in = tokenize_exact [ c_i ; c_n ] (`TokIn ())
+let tokenize_let = tokenize_exact [ c_l ; c_e ; c_t ] (`TokLet ())
+let tokenize_after = tokenize_exact [ c_a ; c_f ; c_t ; c_e ; c_r ] (`TokAfter ())
+let tokenize_before = tokenize_exact [ c_b ; c_e ; c_f ; c_o ; c_r ; c_e ] (`TokBefore ())
+
 let tokenize_int =
   tokenize_while
     (fun _ c -> 48 <= c && c <= 57)
     (fun s -> if nonempty_list s then
-                `Success (`TokInt s)
+                `Success (`TokInt (int_of_string s))
               else
                 `Failure (`TENoCharsFound {site = 4}))
 
@@ -175,12 +250,16 @@ let tokenize_var =
               else
                 `Failure (`TENoCharsFound {site = 5}))
 
-let rec lex_token (text: string) : list Token =
+(* **** Combined lexer definition ******************************************* *)
+
+let rec lex_tokens (text: string) : list token =
   match text with
   | [] -> [`Invalid (`UnsignaledEof ())]
   | c :: text_remaining ->
     if c == -1 then [`TokEof ()] else
-    if c == 32 then lex_token text_remaining else
+    if list_contains eq c [c_space;c_newline] then
+      lex_tokens text_remaining
+    else
     let token =
       compose_success tokenize_mult
       (compose_success tokenize_plus
@@ -197,32 +276,52 @@ let rec lex_token (text: string) : list Token =
       (fun x -> `Failure 1)))))))))))) text
     in
     match token with
-    | `Success x -> x.tok :: lex_token x.remaining
+    | `Success x -> x.tok :: lex_tokens x.remaining
     | `Failure y -> [`Invalid (`NoMatch text)]
     end
   end
 
-let test_four_space =
-  lex_token [52;32;-1]
+(* **** Lexer unit tests **************************************************** *)
 
-let test_four_space_lexes =
-  list_eq tok_eq test_four_space [`TokInt [52]; `TokEof ()]
+let test_lex_four_space =
+  lex_tokens [c_4;c_space;eof]
 
-let test_four_plus_three =
-  lex_token [52;43;51;-1]
+let test_lex_four_space_lexes =
+  list_eq token_eq test_lex_four_space [`TokInt 4; `TokEof ()]
 
-let test_four_plus_three_lexes =
-  list_eq tok_eq test_four_plus_three
-    [`TokInt [52]; `TokPlus (); `TokInt [51]; `TokEof ()]
+let test_lex_four_plus_three =
+  lex_tokens [c_4;c_plus;c_3;eof]
 
-let test_space_four_space_plus_space_three_space =
-  lex_token [32;52;32;43;32;51;32;-1]
+let test_lex_four_plus_three_lexes =
+  list_eq token_eq test_lex_four_plus_three
+    [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
 
-let test_space_four_space_plus_space_three_space_lexes =
-  list_eq tok_eq test_space_four_space_plus_space_three_space
-    [`TokInt [52]; `TokPlus (); `TokInt [51]; `TokEof ()]
+let test_lex_space_four_space_plus_space_three_space =
+  lex_tokens [c_space;c_4;c_space;c_plus;c_space;c_3;c_space;eof]
+
+let test_lex_space_four_space_plus_space_three_space_lexes =
+  list_eq token_eq test_lex_space_four_space_plus_space_three_space
+    [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
+
+let test_lex_four_space_newline_times_plus_newline_three =
+  lex_tokens [c_4;c_space;c_newline;c_asterisk;c_plus;c_newline;c_3;-1]
+
+let test_lex_four_space_newline_times_plus_newline_three_lexes =
+  list_eq token_eq test_lex_four_space_newline_times_plus_newline_three
+    [`TokInt 4; `TokTimes (); `TokPlus (); `TokInt 3]
+
+let test_lex_four_plus_quantity_three_times_two =
+  lex_tokens [c_4;c_plus;c_open_paren;c_3;c_asterisk;c_2;c_closed_paren;eof]
+
+let test_lex_four_plus_quantity_three_times_two_lexes =
+  list_eq token_eq test_lex_four_plus_quantity_three_times_two
+    [`TokInt 4; `TokPlus (); `TokOpenParen (); `TokInt 3; `TokMult ();
+     `TokInt 2; `TokCloseParen(); `TokEof ()]
+
+(* **** Aggregate unit tests ************************************************ *)
 
 let z_ALL_TESTS =
-  test_four_space_lexes &&
-  test_four_plus_three_lexes &&
-  test_space_four_space_plus_space_three_space_lexes
+     test_lex_four_space_lexes
+  && test_lex_four_plus_three_lexes
+  && test_lex_space_four_space_plus_space_three_space_lexes
+  && test_lex_four_plus_quantity_three_times_two_lexes

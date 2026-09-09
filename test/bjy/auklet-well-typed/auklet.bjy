@@ -1,0 +1,1005 @@
+(* TEST
+  include exhaust;
+*)
+
+(* **** Useful constants **************************************************** *)
+
+let char = int
+let string = list char
+
+let eof = -1
+
+let c_newline = 10
+let c_space = 32
+let c_asterisk = 42
+let c_plus = 43
+let c_comma = 44
+let c_minus = 45
+let c_open_paren = 40
+let c_closed_paren = 41
+let c_equal = 61
+let c_open_bracket = 91
+let c_closed_bracket = 93
+let c_0 : char = 48
+let c_1 : char = 49
+let c_2 : char = 50
+let c_3 : char = 51
+let c_4 : char = 52
+let c_5 : char = 53
+let c_6 : char = 54
+let c_7 : char = 55
+let c_8 : char = 56
+let c_9 : char = 57
+let c_a : char = 97
+let c_b : char = 98
+let c_c : char = 99
+let c_d : char = 100
+let c_e : char = 101
+let c_f : char = 102
+let c_g : char = 103
+let c_h : char = 104
+let c_i : char = 105
+let c_j : char = 106
+let c_k : char = 107
+let c_l : char = 108
+let c_m : char = 109
+let c_n : char = 110
+let c_o : char = 111
+let c_p : char = 112
+let c_q : char = 113
+let c_r : char = 114
+let c_s : char = 115
+let c_t : char = 116
+let c_u : char = 117
+let c_v : char = 118
+let c_w : char = 119
+let c_x : char = 120
+let c_y : char = 121
+let c_z : char = 122
+
+(* **** Stdlib-style definitions ******************************************** *)
+
+let eq x y = x == y
+
+let rec list_eq cmp xs ys =
+  match xs with
+  | [] ->
+    match ys with
+    | [] -> true
+    | _ :: _ -> false
+    end
+  | x :: xs2 ->
+    match ys with
+    | [] -> false
+    | y :: ys2 ->
+      if cmp x y then list_eq cmp xs2 ys2 else false
+    end
+  end
+
+let rec list_contains cmp item xs =
+  match xs with
+  | [] -> false
+  | hd :: tl ->
+    if cmp hd item then true else list_contains cmp item tl
+  end
+
+let list_rev (type a) (l : list a) : list a =
+  let rec aux (acc : list a) (ls : list a) : list a =
+    match ls with
+    | [] -> acc
+    | hd :: tl -> aux (hd :: acc) tl
+    end
+  in
+  aux [] l
+
+let rec list_concat (type a) (l : list (list a)) : list a =
+  match l with
+  | [] -> []
+  | hd::tl ->
+    match hd with
+    | [] -> list_concat a tl
+    | ihd::itl -> ihd :: list_concat a (itl::tl)
+    end
+  end
+
+let int_of_string (text : string) : int =
+  let rec loop (text : string) (tally : int) : int =
+    match text with
+    | [] -> tally
+    | c :: rest -> loop rest (tally * 10 + c - 48)
+    end
+  in
+  loop text 0
+
+let rec string_of_int (n : int) : string =
+  if n == 0 then [c_0] else
+  if n < 0 then c_minus :: string_of_int (0-n) else
+  let rec loop (n : int) : string =
+    if n < 10 then [48+n] else
+    (48 + n % 10) :: loop (n / 10)
+  in
+  list_rev char (loop n)
+
+let nonempty_list lst =
+  match lst with | [] -> false | _ :: _ -> true end
+
+let pair a b = { fst:a; snd:b }
+
+let option t = | `Some of t | `None of unit
+
+let rec option_sequence (type a) (xs : list (option a)) : option (list a) =
+  match xs with
+  | [] -> `Some []
+  | xo::resto ->
+    match xo with
+    | `None u -> `None ()
+    | `Some x ->
+      match option_sequence a resto with
+      | `None u -> `None ()
+      | `Some rest -> `Some (x :: rest)
+      end
+    end
+  end
+
+let option_list_concat (type a) (xsos: list (option (list a)))
+    : option (list a) =
+  match option_sequence (list a) xsos with
+  | `None u -> `None ()
+  | `Some xss -> `Some (list_concat a xss)
+  end
+
+(* **** Linear dictionary routines ****************************************** *)
+
+let Equatable = sig
+  val t: type
+  val equal: t -> t -> bool
+end
+
+let LinearDictionary : (E : Equatable) -> (tv : type) -> sig
+  val tk = E.t
+  val t : type
+  val empty : t
+  val get : tk -> t -> option tv
+  val remove : tk -> t -> t
+  val put : tk -> tv -> t -> t
+end = fun E tv -> struct
+  let tk = E.t
+  let t = list {k:tk;v:tv}
+  let empty = []
+  let rec get (k : tk) (m : t) : option tv =
+    match m with
+    | [] -> `None ()
+    | hd::tl ->
+      if E.equal hd.k k then `Some (hd.v) else get k tl
+    end
+  let rec remove (k : tk) (m : t) : t =
+    match m with
+    | [] -> []
+    | hd::tl ->
+      if E.equal hd.k k then tl else hd::(remove k tl)
+    end
+  let rec put (k : tk) (v : tv) (m : t) : t =
+    {k=k;v=v} :: remove k m
+end
+
+(* **** Lexer datatypes and utilities *************************************** *)
+
+let invalid_token =
+  | `UnsignaledEof of unit
+  | `NoMatch of { text: string }
+
+let token =
+  | `TokMult of unit
+  | `TokPlus of unit
+  | `TokInt of int
+  | `TokVar of string
+  | `TokMinus of unit
+  | `TokOpenParen of unit
+  | `TokCloseParen of unit
+  | `TokLet of unit
+  | `TokIn of unit
+  | `TokEqual of unit
+  | `TokAfter of unit
+  | `TokBefore of unit
+  | `TokEof of unit
+  | `Invalid of invalid_token
+
+let tokenize_error =
+  | `TESpecific of { site: int; wanted: string; had: string }
+  | `TENoCharsFound of { site: int }
+
+let tokenize_result = `Success of {remaining:string; tok:token}
+                    | `Failure of tokenize_error
+
+let compose_success f g chars =
+  match f chars with
+  | `Success x -> `Success x
+  | `Failure _ -> g chars
+  end
+
+let token_eq a b =
+  match a with
+  | `TokMult u1 -> match b with | `TokMult u2 -> true | _ -> false end
+  | `TokPlus u1 -> match b with | `TokPlus u2 -> true | _ -> false end
+  | `TokInt n1 -> match b with | `TokInt n2 -> n1 == n2 | _ -> false end
+  | `TokVar s1 -> match b with | `TokVar s2 -> list_eq (fun x y -> x == y) s1 s2
+                               | _ -> false end
+  | `TokMinus u1 -> match b with | `TokMinus u2 -> true | _ -> false end
+  | `TokOpenParen u1 -> match b with | `TokOpenParen u2 -> true | _ -> false end
+  | `TokCloseParen u1 -> match b with | `TokCloseParen u2 -> true | _ -> false end
+  | `TokLet u1 -> match b with | `TokLet u2 -> true | _ -> false end
+  | `TokIn u1 -> match b with | `TokIn u2 -> true | _ -> false end
+  | `TokEqual u1 -> match b with | `TokEqual u2 -> true | _ -> false end
+  | `TokAfter u1 -> match b with | `TokAfter u2 -> true | _ -> false end
+  | `TokBefore u1 -> match b with | `TokBefore u2 -> true | _ -> false end
+  | `TokEof u1 -> match b with | `TokEof u2 -> true | _ -> false end
+  | `Invalid n1 -> match b with | `Invalid n2 -> n1 == n2 | _ -> false end
+  end
+
+(* **** Lexer combinators *************************************************** *)
+
+let tokenize_exact
+    (expected : string) (tok : token) (actual : string)
+    : tokenize_result =
+    let rec loop (expected : string) (actual : string) : tokenize_result =
+      match expected with
+      | [] -> `Success { remaining = actual; tok = tok }
+      | expected_char :: expected_rest ->
+        match actual with
+        | [] -> `Failure (`TESpecific
+                    { site = 1; wanted = expected; had = actual })
+        | actual_char :: actual_rest ->
+          if expected_char == actual_char then
+            loop expected_rest actual_rest
+          else
+            `Failure (`TESpecific
+                { site = 2; wanted = expected; had = actual })
+        end
+      end
+    in
+    loop expected actual
+
+let tokenize_while
+    (predicate : int -> int -> bool)
+    (ret : string -> | `Success of token | `Failure of tokenize_error)
+    (text : string)
+    : tokenize_result =
+  let rec loop (index : int) (acc : string) (text : string) : tokenize_result =
+    match text with
+    | [] ->
+      (* Nothing left to parse.  Attempt to use the accumulated string. *)
+      match ret (list_rev char acc) with
+      | `Success token -> `Success { remaining = text; tok = token }
+      | `Failure x -> `Failure x
+      end
+    | hd :: tl ->
+      if predicate index hd then
+        (* Include this character and keep eating! *)
+        loop (index + 1) (hd :: acc) tl
+      else
+        (* We have a character that doesn't match the predicate.  Use what
+           we have. *)
+        match ret (list_rev char acc) with
+        | `Success token -> `Success { remaining = text; tok = token }
+        | `Failure x -> `Failure x
+        end
+    end
+  in
+  loop 0 [] text
+
+(* **** Lexers ************************************************************** *)
+
+let tokenize_mult = tokenize_exact [ c_asterisk ] (`TokMult ())
+let tokenize_plus = tokenize_exact [ c_plus ] (`TokPlus ())
+let tokenize_minus = tokenize_exact [ c_minus ] (`TokMinus ())
+let tokenize_openparen = tokenize_exact [ c_open_paren ] (`TokOpenParen ())
+let tokenize_closeparen = tokenize_exact [ c_closed_paren ] (`TokCloseParen ())
+let tokenize_equal = tokenize_exact [ c_equal ] (`TokEqual ())
+let tokenize_in = tokenize_exact [ c_i ; c_n ] (`TokIn ())
+let tokenize_let = tokenize_exact [ c_l ; c_e ; c_t ] (`TokLet ())
+let tokenize_after = tokenize_exact [ c_a ; c_f ; c_t ; c_e ; c_r ] (`TokAfter ())
+let tokenize_before = tokenize_exact [ c_b ; c_e ; c_f ; c_o ; c_r ; c_e ] (`TokBefore ())
+
+let tokenize_int =
+  tokenize_while
+    (fun _ c -> 48 <= c && c <= 57)
+    (fun s -> if nonempty_list s then
+                `Success (`TokInt (int_of_string s))
+              else
+                `Failure (`TENoCharsFound {site = 4}))
+
+let tokenize_var =
+  tokenize_while
+    (fun idx c -> (65 <= c && c <= 90) ||   (* upper-case letter *)
+                  (97 <= c && c <= 122) ||  (* lower-case letter *)
+                  (48 <= c && c <= 57 && idx > 0)) (* digit after first pos *)
+    (fun s -> if nonempty_list s then
+                `Success (`TokVar s)
+              else
+                `Failure (`TENoCharsFound {site = 5}))
+
+(* **** Combined lexer definition ******************************************* *)
+
+let rec lex_tokens (text: string) : list token =
+  match text with
+  | [] -> [`Invalid (`UnsignaledEof ())]
+  | c :: text_remaining ->
+    if c == -1 then [`TokEof ()] else
+    if list_contains eq c [c_space;c_newline] then
+      lex_tokens text_remaining
+    else
+    let token =
+      compose_success tokenize_mult
+      (compose_success tokenize_plus
+      (compose_success tokenize_minus
+      (compose_success tokenize_openparen
+      (compose_success tokenize_closeparen
+      (compose_success tokenize_equal
+      (compose_success tokenize_in
+      (compose_success tokenize_let
+      (compose_success tokenize_after
+      (compose_success tokenize_before
+      (compose_success tokenize_int
+      (compose_success tokenize_var
+      (fun x -> `Failure 1)))))))))))) text
+    in
+    match token with
+    | `Success x -> x.tok :: lex_tokens x.remaining
+    | `Failure y -> [`Invalid (`NoMatch text)]
+    end
+  end
+
+(* **** Expressions ********************************************************* *)
+
+let expr = mu expr.
+  | `EInt of int
+  | `EVar of string
+  | `EPlus of { e1: expr; e2: expr }
+  | `EMinus of { e1: expr; e2: expr }
+  | `ETimes of { e1: expr; e2: expr }
+  | `EAfter of expr
+  | `EBefore of expr
+  | `ELet of { var: string; e1: expr; e2: expr }
+
+let eplus (e1 : expr) (e2 : expr) : expr = `EPlus {e1=e1;e2=e2}
+let eminus (e1 : expr) (e2 : expr) : expr = `EMinus {e1=e1;e2=e2}
+let etimes (e1 : expr) (e2 : expr) : expr = `ETimes {e1=e1;e2=e2}
+
+let rec expr_eq (e1 : expr) (e2 : expr) : bool =
+  match e1 with
+  | `EInt n1 -> match e2 with | `EInt n2 -> n1 == n2 | _ -> false end
+  | `EVar s1 -> match e2 with | `EVar s2 -> list_eq eq s1 s2 | _ -> false end
+  | `EPlus p1 -> match e2 with | `EPlus p2 -> expr_eq p1.e1 p2.e1 &&
+                                              expr_eq p1.e2 p2.e2
+                               | _ -> false end
+  | `EMinus p1 -> match e2 with | `EMinus p2 -> expr_eq p1.e1 p2.e1 &&
+                                                expr_eq p1.e2 p2.e2
+                                | _ -> false end
+  | `ETimes p1 -> match e2 with | `ETimes p2 -> expr_eq p1.e1 p2.e1 &&
+                                                expr_eq p1.e2 p2.e2
+                                | _ -> false end
+  | `EAfter e1 -> match e2 with | `EAfter e2 -> expr_eq e1 e2 | _ -> false end
+  | `EBefore e1 -> match e2 with | `EBefore e2 -> expr_eq e1 e2 | _ -> false end
+  | `ELet p1 -> match e2 with | `ELet p2 -> list_eq eq p1.var p2.var &&
+                                            expr_eq p1.e1 p2.e1 &&
+                                            expr_eq p1.e2 p2.e2
+                              | _ -> false end
+  end
+
+(* **** Parser ************************************************************** *)
+
+let parse_error = `PEUnexpectedEos of unit
+                | `PESpecific of { site: int; wanted: token; had: list token }
+                | `PEExpectedVar of unit
+                | `PEExpectedPrimary of unit
+                | `PEExpectedEos of unit
+
+let parse_result = `Success of { e: expr; remaining: list token }
+                 | `Failure of parse_error
+
+let fail_eos = `Failure (`PEUnexpectedEos ())
+let fail_spec site wanted had =
+    `Failure (`PESpecific {site=site; wanted=wanted; had=had})
+
+let rec parse_expr (tokens: list token) : parse_result =
+  match tokens with
+  | [] -> fail_eos
+  | token1 :: rest1 ->
+    match token1 with
+    | `TokLet u ->
+      match rest1 with
+      | token2 :: rest2 ->
+        match token2 with
+        | `TokVar varname ->
+          match rest2 with
+          | token3 :: rest3 ->
+            match token3 with
+            | `TokEqual u ->
+              match rest3 with
+              | token4 :: rest4 ->
+                match parse_expr rest4 with
+                | `Success success1 ->
+                  match success1.remaining with
+                  | token5 :: rest5 ->
+                    match token5 with
+                    | `TokIn u ->
+                      match parse_expr rest5 with
+                      | `Success success2 ->
+                        `Success { e = `ELet {var = varname;
+                                              e1 = success1.e;
+                                              e2 = success2.e};
+                                   remaining = success2.remaining }
+                      | `Failure err -> `Failure err
+                      end
+                    | _ -> fail_spec 1 (`TokIn ()) success1.remaining
+                    end
+                  | [] -> fail_eos
+                  end
+                | `Failure err -> `Failure err
+                end
+              | [] -> fail_eos
+              end
+            | _ -> fail_spec 2 (`TokEqual ()) rest2
+            end
+          | [] -> fail_eos
+          end
+        | _ -> `Failure (`PEExpectedVar ())
+        end
+      | [] -> fail_eos
+      end
+    | _ ->
+      parse_additive_expr tokens
+    end
+  end
+
+and parse_additive_expr (tokens: list token) : parse_result =
+  (* Get an inner expression *)
+  match parse_multiplicative_expr tokens with
+  | `Success success1 ->
+    (* Get the sequence of operator and inner expression pairs *)
+    let rec loop (tokens : list token)
+        : `Success of {l:list { op:(expr -> expr -> expr); e:expr };
+                       remaining: list token}
+        | `Failure of parse_error =
+      match tokens with
+      | token :: rest ->
+        match token with
+        | `TokPlus u ->
+          match parse_multiplicative_expr rest with
+          | `Success success2 ->
+            match loop success2.remaining with
+            | `Success success3 ->
+              `Success {l={op=eplus;e=success2.e}::success3.l;
+                        remaining=success3.remaining}
+            | `Failure err -> `Failure err
+            end
+          | `Failure err -> `Failure err
+          end
+        | `TokMinus u ->
+          match parse_multiplicative_expr rest with
+          | `Success success2 ->
+            match loop success2.remaining with
+            | `Success success3 ->
+              `Success {l={op=eminus;e=success2.e}::success3.l;
+                        remaining=success3.remaining}
+            | `Failure err -> `Failure err
+            end
+          | `Failure err -> `Failure err
+          end
+        | _ -> `Success {l=[];remaining=tokens}
+        end
+      | [] -> `Success {l=[];remaining=tokens}
+      end
+    in
+    match loop success1.remaining with
+    | `Success loop_success ->
+      (* Left-associate them *)
+      let rec loop e chain =
+        match chain with
+        | [] -> e
+        | item :: rest -> loop (item.op e item.e) rest
+        end
+      in
+      `Success {e=loop success1.e loop_success.l;
+                remaining=loop_success.remaining}
+    | `Failure err -> `Failure err
+    end
+  | `Failure err -> `Failure err
+  end
+
+and parse_multiplicative_expr (tokens: list token) : parse_result =
+  (* Get an inner expression *)
+  match parse_primary_expr tokens with
+  | `Success success1 ->
+    (* Get the sequence of operator and inner expression pairs *)
+    let rec loop (tokens : list token)
+        : `Success of {l:list { op:(expr -> expr -> expr); e:expr };
+                       remaining: list token}
+        | `Failure of parse_error =
+      match tokens with
+      | token :: rest ->
+        match token with
+        | `TokMult u ->
+          match parse_primary_expr rest with
+          | `Success success2 ->
+            match loop success2.remaining with
+            | `Success success3 ->
+              `Success {l={op=etimes;e=success2.e}::success3.l;
+                           remaining=success3.remaining}
+            | `Failure err -> `Failure err
+            end
+          | `Failure err -> `Failure err
+          end
+        | _ -> `Success {l=[];remaining=tokens}
+        end
+      | [] -> `Success {l=[];remaining=tokens}
+      end
+    in
+    match loop success1.remaining with
+    | `Success loop_success ->
+      (* Left-associate them *)
+      let rec loop e chain =
+        match chain with
+        | [] -> e
+        | item :: rest -> loop (item.op e item.e) rest
+        end
+      in
+      `Success {e=loop success1.e loop_success.l;
+                remaining=loop_success.remaining}
+    | `Failure err -> `Failure err
+    end
+  | `Failure err -> `Failure err
+  end
+
+and parse_primary_expr (tokens: list token) : parse_result =
+  match tokens with
+  | token1 :: rest1 ->
+    match token1 with
+    | `TokInt n ->
+      `Success { e = `EInt n; remaining = rest1 }
+    | `TokVar x ->
+      `Success { e = `EVar x; remaining = rest1 }
+    | `TokAfter u ->
+      match rest1 with
+      | token2 :: rest2 ->
+        match token2 with
+        | `TokOpenParen u ->
+          match parse_expr rest2 with
+          | `Success success ->
+            match success.remaining with
+            | token3 :: rest3 ->
+              match token3 with
+              | `TokCloseParen u ->
+                `Success { e = `EAfter success.e; remaining = rest3 }
+              | _ -> fail_spec 3 (`TokCloseParen ()) success.remaining
+              end
+            | [] -> fail_eos
+            end
+          | `Failure err -> `Failure err
+          end
+        | _ -> fail_spec 4 (`TokOpenParen ()) rest1
+        end
+      | [] -> fail_eos
+      end
+    | `TokBefore u ->
+      match rest1 with
+      | token2 :: rest2 ->
+        match token2 with
+        | `TokOpenParen u ->
+          match parse_expr rest2 with
+          | `Success success ->
+            match success.remaining with
+            | token3 :: rest3 ->
+              match token3 with
+              | `TokCloseParen u ->
+                `Success { e = `EBefore success.e; remaining = rest3 }
+              | _ -> fail_spec 5 (`TokCloseParen ()) success.remaining
+              end
+            | [] -> fail_eos
+            end
+          | `Failure err -> `Failure err
+          end
+        | _ -> fail_spec 6 (`TokOpenParen ()) rest1
+        end
+      | [] -> fail_eos
+      end
+    | `TokOpenParen u ->
+      match parse_expr rest1 with
+      | `Success success ->
+        match success.remaining with
+        | token2 :: rest2 ->
+          match token2 with
+          | `TokCloseParen u ->
+            `Success { e = success.e; remaining = rest2 }
+          | _ -> fail_spec 7 (`TokCloseParen ()) success.remaining
+          end
+        | [] -> fail_eos
+        end
+      | `Failure err -> `Failure err      
+      end
+    | _ -> `Failure (`PEExpectedPrimary ())
+    end
+  | [] -> fail_eos
+  end
+
+let parse_program (tokens : list token) : parse_result =
+  match parse_expr tokens with
+  | `Success success ->
+    match success.remaining with
+    | token :: rest ->
+      match token with
+      | `TokEof u ->
+        `Success { e=success.e; remaining=[] }
+      | _ -> `Failure (`PEExpectedEos ())
+      end
+    | [] -> `Failure (`PEExpectedEos ())
+    end
+  | `Failure err -> `Failure err
+  end
+
+(* **** Assembly AST ******************************************************** *)
+
+let register = | `RAX of unit | `RSP of unit
+let address =
+    | `AddrByRegister of register
+    | `AddrByRegisterOffset of {reg:register;ofs:int}
+let argument =
+    | `ArgConstant of int
+    | `ArgRegister of register
+    | `ArgMemory of address
+let instruction =
+    | `AsmAdd of {lhs: argument; rhs: argument}
+    | `AsmIMul of {lhs: argument; rhs: argument}
+    | `AsmMov of {lhs: argument; rhs: argument}
+    | `AsmSub of {lhs: argument; rhs: argument}
+    | `AsmRet of unit
+
+let register_eq (r1 : register) (r2 : register) : bool =
+  match r1 with
+  | `RAX u -> match r2 with | `RAX u -> true | _ -> false end
+  | `RSP u -> match r2 with | `RSP u -> true | _ -> false end
+  end
+let address_eq (a1 : address) (a2 : address) : bool =
+  match a1 with
+  | `AddrByRegister r1 ->
+    match a2 with
+    | `AddrByRegister r2 -> register_eq r1 r2
+    | _ -> false
+    end
+  | `AddrByRegisterOffset r1 ->
+    match a2 with
+    | `AddrByRegisterOffset r2 -> register_eq r1.reg r2.reg && r1.ofs == r2.ofs
+    | _ -> false
+    end
+  end
+let argument_eq (a1 : argument) (a2 : argument) : bool =
+  match a1 with
+  | `ArgConstant n1 -> match a2 with | `ArgConstant n2 -> n1 == n2
+                                     | _ -> false end
+  | `ArgRegister r1 -> match a2 with | `ArgRegister r2 -> register_eq r1 r2
+                                     | _ -> false end
+  | `ArgMemory adr1 -> match a2 with | `ArgMemory adr2 -> address_eq adr1 adr2
+                                     | _ -> false end
+  end
+let instruction_eq (i1 : instruction) (i2 : instruction) : bool =
+  let binop_eq r1 r2 = argument_eq r1.lhs r2.lhs && argument_eq r1.rhs r2.rhs in
+  match i1 with
+  | `AsmAdd r1 -> match i2 with `AsmAdd r2 -> binop_eq r1 r2 | _ -> false end
+  | `AsmIMul r1 -> match i2 with `AsmIMul r2 -> binop_eq r1 r2 | _ -> false end
+  | `AsmMov r1 -> match i2 with `AsmMov r2 -> binop_eq r1 r2 | _ -> false end
+  | `AsmRet u -> match i2 with `AsmRet u -> true | _ -> false end
+  | `AsmSub r1 -> match i2 with `AsmSub r2 -> binop_eq r1 r2 | _ -> false end
+  end
+
+let code_of_register (reg : register) : string =
+  match reg with
+  | `RAX u -> [c_r;c_a;c_x]
+  | `RSP u -> [c_r;c_s;c_p]
+  end
+let code_of_address (addr : address) : string =
+  match addr with
+  | `AddrByRegister reg ->
+    list_concat char [[c_open_bracket]; code_of_register reg; [c_closed_bracket]]
+  | `AddrByRegisterOffset r ->
+    list_concat char [[c_open_bracket]; code_of_register r.reg;
+                 (if r.ofs >= 0 then [c_plus] else []);
+                 string_of_int r.ofs; [c_closed_bracket]]
+  end
+let code_of_argument (arg : argument) : string =
+  match arg with
+  | `ArgConstant n -> string_of_int n
+  | `ArgMemory addr -> code_of_address addr
+  | `ArgRegister reg -> code_of_register reg
+  end
+let code_of_instruction (instr : instruction) : string =
+  let twoarg name args =
+    list_concat char [name;[c_space];code_of_argument args.lhs;
+                      [c_comma;c_space];code_of_argument args.rhs]
+  in
+  match instr with
+  | `AsmAdd r -> twoarg [c_a;c_d;c_d] r
+  | `AsmIMul r -> twoarg [c_i;c_m;c_u;c_l] r
+  | `AsmMov r -> twoarg [c_m;c_o;c_v] r
+  | `AsmRet u -> [c_r;c_e;c_t]
+  | `AsmSub r -> twoarg [c_s;c_u;c_b] r
+  end
+let rec code_of_instruction_list (instrs : list instruction) : string =
+  match instrs with
+  | [] -> []
+  | instr::rest ->
+    let instr_code = code_of_instruction instr in
+    let rest_code = code_of_instruction_list rest in
+    list_concat char [instr_code;[c_newline];rest_code]
+  end
+
+(* **** Variable environment ************************************************ *)
+
+let StringIntLinearDictionary = LinearDictionary (struct
+    let t = string
+    let equal = list_eq char
+  end) int
+
+let Environment = struct
+  let t = {m:StringIntLinearDictionary.t; offset:int}
+  let empty : t = {m=StringIntLinearDictionary.empty; offset=-8}
+  let allocate_named_variable (x : string) (env : t) : t =
+    {m=StringIntLinearDictionary.put x env.offset env.m; offset=env.offset-8}
+  let allocate_temp_variable (env : t) : pair argument t =
+    let newenv = {m=env.m; offset=env.offset-8} in
+    {fst=`ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=env.offset});
+     snd=newenv}
+  let find_named_variable (x : string) (env : t): option argument =
+    match StringIntLinearDictionary.get x env.m with
+    | `None u -> `None ()
+    | `Some ofs -> `ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=ofs})
+    end
+end
+
+(* **** Compiler ************************************************************ *)
+
+let rec compile_expression (env : Environment.t) (e : expr)
+    : option (list instruction) =
+  match e with
+  | `EInt n ->
+    `Some [`AsmMov { lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant n}]
+  | `EVar x ->
+    match Environment.find_named_variable x env with
+    | `None u -> `None ()
+    | `Some arg -> `Some [`AsmMov { lhs=`ArgRegister (`RAX ()); rhs=arg}]
+    end
+  | `EAfter e1 ->
+    option_list_concat instruction
+      [compile_expression env e1;
+       `Some [`AsmAdd { lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 1}]]
+  | `EBefore e1 ->
+    option_list_concat instruction
+      [compile_expression env e1;
+       `Some [`AsmSub { lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 1}]]
+  | `ELet r ->
+    let e2env = Environment.allocate_named_variable r.var env in
+    let varloc = Environment.find_named_variable r.var env in
+    let e1instr = compile_expression env r.e1 in
+    let e2instr = compile_expression e2env r.e2 in
+    option_list_concat instruction
+      [e1instr;
+       `Some [`AsmMov { lhs=varloc; rhs=`ArgRegister (`RAX ())}];
+       e2instr
+      ]
+  | `EPlus r ->
+    let renv1 = Environment.allocate_temp_variable env in
+    let renv2 = Environment.allocate_temp_variable renv1.snd in
+    let loc1 = renv1.fst in
+    let loc2 = renv2.fst in
+    let e1instr = compile_expression env r.e1 in
+    let e2instr = compile_expression renv1.snd r.e2 in
+    option_list_concat instruction
+      [e1instr;
+       `Some [`AsmMov { lhs=loc1; rhs=`ArgRegister (`RAX ()) }];
+       e2instr;
+       `Some [`AsmMov { lhs=loc2; rhs=`ArgRegister (`RAX ()) };
+              `AsmMov { lhs=`ArgRegister (`RAX ()); rhs=loc1 };
+              `AsmAdd { lhs=`ArgRegister (`RAX ()); rhs=loc2 }]
+      ]
+  | `EMinus r ->
+    let renv1 = Environment.allocate_temp_variable env in
+    let renv2 = Environment.allocate_temp_variable renv1.snd in
+    let loc1 = renv1.fst in
+    let loc2 = renv2.fst in
+    let e1instr = compile_expression env r.e1 in
+    let e2instr = compile_expression renv1.snd r.e2 in
+    option_list_concat instruction
+      [e1instr;
+       `Some [`AsmMov { lhs=loc1; rhs=`ArgRegister (`RAX ()) }];
+       e2instr;
+       `Some [`AsmMov { lhs=loc2; rhs=`ArgRegister (`RAX ()) };
+              `AsmMov { lhs=`ArgRegister (`RAX ()); rhs=loc1 };
+              `AsmSub { lhs=`ArgRegister (`RAX ()); rhs=loc2 }]
+      ]
+  | `ETimes r ->
+    let renv1 = Environment.allocate_temp_variable env in
+    let renv2 = Environment.allocate_temp_variable renv1.snd in
+    let loc1 = renv1.fst in
+    let loc2 = renv2.fst in
+    let e1instr = compile_expression env r.e1 in
+    let e2instr = compile_expression renv1.snd r.e2 in
+    option_list_concat instruction
+      [e1instr;
+       `Some [`AsmMov { lhs=loc1; rhs=`ArgRegister (`RAX ()) }];
+       e2instr;
+       `Some [`AsmMov { lhs=loc2; rhs=`ArgRegister (`RAX ()) };
+              `AsmMov { lhs=`ArgRegister (`RAX ()); rhs=loc1 };
+              `AsmIMul { lhs=`ArgRegister (`RAX ()); rhs=loc2 }]
+      ]
+  end
+
+let compile_expression_to_assembly (e : expr) : option string =
+  let instrs_opt = compile_expression Environment.empty e in
+  match instrs_opt with
+  | `Some code -> `Some (code_of_instruction_list code)
+  | `None u -> `None ()
+  end
+
+let compile_source_to_assembly (source : string) : option string =
+  match parse_program (lex_tokens source) with
+  | `Failure _ -> `None ()
+  | `Success r -> compile_expression_to_assembly r.e
+  end
+
+(* **** Lexer unit tests **************************************************** *)
+
+let test_lex_four_space =
+  lex_tokens [c_4;c_space;eof]
+
+let test_lex_four_space_lexes =
+  list_eq token_eq test_lex_four_space [`TokInt 4; `TokEof ()]
+
+let test_lex_four_plus_three =
+  lex_tokens [c_4;c_plus;c_3;eof]
+
+let test_lex_four_plus_three_lexes =
+  list_eq token_eq test_lex_four_plus_three
+    [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
+
+let test_lex_space_four_space_plus_space_three_space =
+  lex_tokens [c_space;c_4;c_space;c_plus;c_space;c_3;c_space;eof]
+
+let test_lex_space_four_space_plus_space_three_space_lexes =
+  list_eq token_eq test_lex_space_four_space_plus_space_three_space
+    [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
+
+let test_lex_four_space_newline_times_plus_newline_three =
+  lex_tokens [c_4;c_space;c_newline;c_asterisk;c_plus;c_newline;c_3;-1]
+
+let test_lex_four_space_newline_times_plus_newline_three_lexes =
+  list_eq token_eq test_lex_four_space_newline_times_plus_newline_three
+    [`TokInt 4; `TokTimes (); `TokPlus (); `TokInt 3]
+
+let test_lex_four_plus_quantity_three_times_two =
+  lex_tokens [c_4;c_plus;c_open_paren;c_3;c_asterisk;c_2;c_closed_paren;eof]
+
+let test_lex_four_plus_quantity_three_times_two_lexes =
+  list_eq token_eq test_lex_four_plus_quantity_three_times_two
+    [`TokInt 4; `TokPlus (); `TokOpenParen (); `TokInt 3; `TokMult ();
+     `TokInt 2; `TokCloseParen(); `TokEof ()]
+
+(* **** Parser unit tests *************************************************** *)
+
+let success_eq (result: parse_result) (expected: expr) : bool =
+  match result with
+  | `Success p -> expr_eq p.e expected
+  | `Failure _ -> false
+  end
+
+let test_parse_four = parse_program [`TokInt 4; `TokEof ()]
+
+let test_parse_four_parses =
+  success_eq test_parse_four (`EInt 4)
+
+let test_parse_four_plus_three =
+  parse_program [`TokInt 4; `TokPlus (); `TokInt 3; `TokEof ()]
+
+let test_parse_four_plus_three_parses =
+  success_eq test_parse_four_plus_three (`EPlus {e1=(`EInt 4);e2=(`EInt 3)})
+
+let test_parse_four_plus_quantity_three_times_two =
+  parse_program [`TokInt 4; `TokPlus (); `TokOpenParen (); `TokInt 3;
+                 `TokMult (); `TokInt 2; `TokCloseParen(); `TokEof ()]
+
+let test_parse_four_plus_quantity_three_times_two_parses =
+  success_eq test_parse_four_plus_quantity_three_times_two
+    (`EPlus {e1=`EInt 4; e2=`ETimes {e1=`EInt 3; e2=`EInt 2}})
+
+(* **** Compiler unit tests ************************************************* *)
+
+let stackloc (n : int) : argument =
+  `ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=(0-8)*n})
+
+let success_eq (result_opt : option (list instruction))
+               (expected : list instruction)
+    : bool =
+  match result_opt with
+  | `None u -> false
+  | `Some result -> list_eq instruction_eq result expected
+  end
+
+let test_compiler_four =
+  compile_expression Environment.empty (`EInt 4)
+
+let test_compiler_four_compiles =
+  success_eq test_compiler_four
+    [`AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 4}]
+
+let test_compiler_four_plus_quantity_three_times_two =
+  compile_expression Environment.empty
+    (`EPlus {e1=`EInt 4; e2=`ETimes {e1=`EInt 3; e2=`EInt 2}})
+
+let test_compiler_four_plus_quantity_three_times_two_compiles =
+  success_eq test_compiler_four_plus_quantity_three_times_two
+    [`AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 4};
+     `AsmMov {lhs=stackloc 1; rhs=`ArgRegister (`RAX ())};
+     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 3};
+     `AsmMov {lhs=stackloc 2; rhs=`ArgRegister (`RAX ())};
+     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 2};
+     `AsmMov {lhs=stackloc 3; rhs=`ArgRegister (`RAX ())};
+     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=stackloc 2};
+     `AsmIMul {lhs=`ArgRegister (`RAX ()); rhs=stackloc 3};
+     `AsmMov {lhs=stackloc 2; rhs=`ArgRegister (`RAX ())};
+     `AsmMov {lhs=`ArgRegister (`RAX ()); rhs=stackloc 1};
+     `AsmAdd {lhs=`ArgRegister (`RAX ()); rhs=stackloc 2}
+    ]
+
+(* **** Full pass unit tests ************************************************ *)
+
+let success_eq (result_opt : option string) (expected : string) : bool =
+  match result_opt with
+  | `None u -> false
+  | `Some text -> list_eq eq text expected
+  end
+
+let test_fullpass_four_plus_three =
+  compile_source_to_assembly
+    (* "4+(3*2)" *)
+    [c_4;c_plus;c_open_paren;c_3;c_asterisk;c_2;c_closed_paren;eof]
+
+let test_fullpass_four_plus_three_correct =
+  success_eq test_fullpass_four_plus_three
+    (* """
+       mov rax, 4
+       mov [rsp-8], rax
+       mov rax, 3
+       mov [rsp-16], rax
+       mov rax, 2
+       mov [rsp-24], rax
+       mov rax, [rsp-16]
+       imul rax, [rsp-24]
+       mov [rsp-16], rax
+       mov rax, [rsp-8]
+       add rax, [rsp-16]
+       """
+    *)
+    [c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_4;c_newline;
+     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_8;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
+     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_3;c_newline;
+     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
+     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_2;c_newline;
+     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_2;c_4;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
+     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_newline;
+     c_i;c_m;c_u;c_l;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_2;c_4;c_closed_bracket;c_newline;
+     c_m;c_o;c_v;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_comma;c_space;c_r;c_a;c_x;c_newline;
+     c_m;c_o;c_v;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_8;c_closed_bracket;c_newline;
+     c_a;c_d;c_d;c_space;c_r;c_a;c_x;c_comma;c_space;c_open_bracket;c_r;c_s;c_p;c_minus;c_1;c_6;c_closed_bracket;c_newline
+    ]
+
+(* **** Aggregate unit tests ************************************************ *)
+
+let z_ALL_TESTS =
+     test_lex_four_space_lexes
+  && test_lex_four_plus_three_lexes
+  && test_lex_space_four_space_plus_space_three_space_lexes
+  && test_lex_four_plus_quantity_three_times_two_lexes
+  && test_parse_four_parses
+  && test_parse_four_plus_three_parses
+  && test_parse_four_plus_quantity_three_times_two_parses
+  && test_compiler_four_compiles
+  && test_compiler_four_plus_quantity_three_times_two_compiles
+  && test_fullpass_four_plus_three_correct
