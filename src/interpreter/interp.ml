@@ -96,9 +96,8 @@ module CPS_Error_M (Env : ENV) = struct
     Format.printf "Vanishing at time %s\n" (Interp_common.Timestamp.to_string s.time);
     escape @@ `XVanish ()
 
-  let type_mismatch (type a) (() : unit) : a m =
-    escape @@ `XType_mismatch { Interp_common.Errors.msg =
-      "No type mismatch message today, sorry" ; body = () }
+  let type_mismatch (type a) (msg : string) : a m =
+    escape @@ `XType_mismatch { Interp_common.Errors.msg = msg ; body = () }
 
   let unbound_variable (type a) (id : Ident.t) : a m =
     escape @@ `XUnbound_variable (id, ())
@@ -255,7 +254,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
           local (fun _ -> Env.add param arg env) (eval body)
         | VMultiArgFunClosure { params ; closure = { body ; env = lazy env }} -> begin
             match params with
-            | [] -> type_mismatch ()
+            | [] -> type_mismatch "Application of multi-arg function with no parameters"
             | [ param ] ->
               local (fun _ -> Env.add param arg env) (eval body)
             | param :: params ->
@@ -263,7 +262,9 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
           end
         | VTypeSingleFun -> return (VTypeSingle arg)
         | VTypeListFun -> return (VTypeList arg)
-        | _ -> type_mismatch ()
+        | _ -> type_mismatch (Printf.sprintf
+                  "Application of non-function %s to %s"
+                  (V.to_string vfunc) (V.to_string arg))
       end
     | ELet { var ; defn ; body } -> eval_let var ~defn ~body
     | ELetTyped { typed_var = { var ; _ } ; defn ; body ; _ } -> eval_let var ~defn ~body
@@ -280,7 +281,7 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         let* tl = eval e_tl in
         match tl with
         | VList ls -> return (VList (hd :: ls))
-        | _ -> type_mismatch ()
+        | _ -> type_mismatch "List cons with non-list tail"
       end
     | EBinop { left ; binop ; right } -> begin
         let* a = eval left in
@@ -301,13 +302,16 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         | BGeq, VInt n1, VInt n2                  -> return (VBool (n1 >= n2))
         | BAnd, VBool b1, VBool b2                -> return (VBool (b1 && b2))
         | BOr, VBool b1, VBool b2                 -> return (VBool (b1 || b2))
-        | _ -> type_mismatch ()
+        | _ -> type_mismatch (Printf.sprintf
+                "Incorrect operands for binop %s:\n%s\nand\n%s"
+                (Binop.to_string binop) (V.to_string a) (V.to_string b))
       end
     | ENot e_not_body ->
       let* e_b = eval e_not_body in
       begin match e_b with
       | VBool b -> return (VBool (not b))
-      | _ -> type_mismatch ()
+      | _ -> type_mismatch (Printf.sprintf
+                "Not of non-boolean %s" (V.to_string e_b))
       end
     | EIf { cond ; true_body ; false_body } ->
       let* e_b = eval cond in
@@ -317,7 +321,8 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         if b
         then eval true_body
         else eval false_body
-      | _ -> type_mismatch ()
+      | _ -> type_mismatch (Printf.sprintf "If condition is non-boolean %s"
+                (V.to_string e_b))
       end
     | EProject { record ; label } ->
       let* r = eval record in
@@ -325,9 +330,13 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       | VRecord body | VModule body ->
         begin match RecordLabel.Map.find_opt label body with
         | Some v -> return v
-        | _ -> type_mismatch ()
+        | _ -> type_mismatch (Printf.sprintf
+                "Invalid projection of label %s from record %s"
+                (RecordLabel.to_string label) (V.to_string r))
         end
-      | _ -> type_mismatch ()
+      | _ -> type_mismatch
+                (Printf.sprintf "Projection of label %s from non-record %s"
+                  (RecordLabel.to_string label) (V.to_string r))
       end
     (* failures *)
     | EAssert e_assert_body ->
@@ -335,14 +344,14 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       begin match e_b with
       | VBool true -> return VUnit
       | VBool false -> abort "Failed assertion"
-      | _ -> type_mismatch ()
+      | _ -> type_mismatch "Assertion of non-boolean"
       end
     | EAssume e_assert_body ->
       let* e_b = eval e_assert_body in
       begin match e_b with
       | VBool true -> return VUnit
       | VBool false -> vanish ()
-      | _ -> type_mismatch ()
+      | _ -> type_mismatch "Assumption of non-boolean"
       end
     (* casing *)
     | EMatch { subject ; patterns } ->
@@ -358,7 +367,9 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
       in
       begin match match_opt with
       | Some (e, f) -> local f (eval e)
-      | None -> type_mismatch ()
+      | None -> type_mismatch (Printf.sprintf
+                "Non-exhaustive pattern match of\n%s\nat\n%s"
+                (V.to_string v) (Expr.to_string e))
       end
     | ECase { subject ; cases ; default } ->
       let* v = eval subject in
@@ -374,7 +385,8 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
         | Some body -> eval body
         | None -> eval default
         end
-      | _ -> type_mismatch ()
+      | _ -> type_mismatch (Printf.sprintf
+                "Unprepared to evaluate expression: %s" (Expr.to_string e))
       end
     (* let funs *)
     | ELetFunRec { funcs ; body } -> begin
@@ -478,8 +490,8 @@ let eval_exp (type a) (e : a Expr.t) (feeder : int Feeder.t) : a V.t * Input_log
   let e =
     match res with
     | Ok r -> Format.printf "OK:\n  %s\n" (V.to_string r); r
-    | Error `XType_mismatch { Interp_common.Errors.msg = _ ; body = () } ->
-      Format.printf "TYPE MISMATCH\n"; VTypeMismatch
+    | Error `XType_mismatch { Interp_common.Errors.msg = msg ; body = () } ->
+      Format.printf "TYPE MISMATCH: %s\n" msg; VTypeMismatch
     | Error `XAbort  { Interp_common.Errors.msg ; body = () } ->
       Format.printf "FOUND ABORT %s\n" msg; VAbort
     | Error `XVanish () -> Format.printf "VANISH\n"; VVanish
