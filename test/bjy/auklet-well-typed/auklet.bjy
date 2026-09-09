@@ -738,7 +738,9 @@ let rec code_of_instruction_list (instrs : list instruction) : string =
 
 let StringIntLinearDictionary = LinearDictionary (struct
     let t = string
-    let equal = list_eq char
+    let equal = list_eq eq
+    (* ERROR idea: provide the type char, not equality on chars: *)
+    (* let equal = list_eq char *)
   end) int
 
 let Environment = struct
