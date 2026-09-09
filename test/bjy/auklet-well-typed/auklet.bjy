@@ -345,7 +345,9 @@ let rec lex_tokens (text: string) : list token =
     in
     match token with
     | `Success x -> x.tok :: lex_tokens x.remaining
-    | `Failure y -> [`Invalid (`NoMatch text)]
+    | `Failure y -> [`Invalid (`NoMatch { text = text })]
+    (* ERROR idea: use `text` raw instead of in a record: *)
+    (* | `Failure y -> [`Invalid (`NoMatch text)] *)
     end
   end
 
@@ -615,7 +617,7 @@ and parse_primary_expr (tokens: list token) : parse_result =
           end
         | [] -> fail_eos
         end
-      | `Failure err -> `Failure err      
+      | `Failure err -> `Failure err
       end
     | _ -> `Failure (`PEExpectedPrimary ())
     end
@@ -751,7 +753,9 @@ let Environment = struct
   let find_named_variable (x : string) (env : t): option argument =
     match StringIntLinearDictionary.get x env.m with
     | `None u -> `None ()
-    | `Some ofs -> `ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=ofs})
+    | `Some ofs -> `Some (`ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=ofs}))
+    (* ERROR idea: do not return an option. (All "ERROR idea"s are genuine errors made along the way) *)
+    (* | `Some ofs -> `ArgMemory (`AddrByRegisterOffset {reg=`RSP (); ofs=ofs}) *)
     end
 end
 
@@ -777,14 +781,19 @@ let rec compile_expression (env : Environment.t) (e : expr)
        `Some [`AsmSub { lhs=`ArgRegister (`RAX ()); rhs=`ArgConstant 1}]]
   | `ELet r ->
     let e2env = Environment.allocate_named_variable r.var env in
-    let varloc = Environment.find_named_variable r.var env in
-    let e1instr = compile_expression env r.e1 in
-    let e2instr = compile_expression e2env r.e2 in
-    option_list_concat instruction
-      [e1instr;
-       `Some [`AsmMov { lhs=varloc; rhs=`ArgRegister (`RAX ())}];
-       e2instr
-      ]
+    (* ERROR idea: do not match on the option: *)
+    (* let varloc = Environment.find_named_variable r.var env in *)
+    match Environment.find_named_variable r.var env with
+    | `None u -> `None ()
+    | `Some varloc ->
+      let e1instr = compile_expression env r.e1 in
+      let e2instr = compile_expression e2env r.e2 in
+      option_list_concat instruction
+        [e1instr;
+        `Some [`AsmMov { lhs=varloc; rhs=`ArgRegister (`RAX ())}];
+        e2instr
+        ]
+    end
   | `EPlus r ->
     let renv1 = Environment.allocate_temp_variable env in
     let renv2 = Environment.allocate_temp_variable renv1.snd in
