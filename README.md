@@ -47,7 +47,7 @@ This command installs the dependencies of this project to opam. You are supposed
 to develop in this directory, as this switch is only active when you are in this directory.
 
 ```
-opam switch create . 5.5.0 --deps-only
+opam switch create . 5.5.0
 ```
 
 Note that this installs all of the necessary packages to build and run the project. However, you may want a few developer tools. We suggest you run the following to get developer tools:

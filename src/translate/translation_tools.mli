@@ -39,10 +39,18 @@ end) : sig
   (** [build x] uses the tape in [x] to build an expression. *)
 end
 
+val mk_assume : ([< `Desugared | `Embedded ] Lang.Ast.Expr.t as 'a) -> 'a
+(* val mk_assume : Lang.Ast.Embedded.t -> Lang.Ast.Embedded.t *)
+(** [mk_assume cond] assumes [cond]. *)
+
+val mk_assert : ([< `Desugared | `Embedded ] Lang.Ast.Expr.t as 'a) -> string -> 'a
+(** [mk_assert cond msg] asserts [cond] and fails with message [msg] if [cond]
+    does not hold. *)
+
 module Desugared_functions : sig
   (*
     let filter_list x =
-      match x with 
+      match x with
       | `Nil _ -> x
       | `Cons _ -> x
       end
@@ -81,12 +89,12 @@ end
 
 module Embedded_functions : sig
   (*
-    Y-combinator for Mu types: 
+    Y-combinator for Mu types:
 
       fun f ->
         (fun x -> freeze (thaw (f (x x))))
         (fun x -> freeze (thaw (f (x x))))
-    
+
     Notes:
     * f is a function, so it has be captured with a closure, so there is nothing
       wrong about using any names here. However, I use tildes to be safe and make
